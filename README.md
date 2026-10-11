@@ -94,16 +94,20 @@ message = '''push の前に CI と同じ確認を回したか。'''
 - 置き場所: `$TURN_STATE_DIR`、なければ `~/.claude/state/turn-state`
 - `<session>.stop.json`(Stop のたびに書き直す): `{ "at": <ms>, "tasks": [...], "dropped": [...], "crons": <件数> }`
   - `tasks`: Stop の入力の `background_tasks` のうち、自分で終わって Claude を起こしうるもの(`id`・`type`・`description`・`command`)
-  - `dropped`: 止めるまで動き続けるコマンド(開発用のサーバー、watch など)。終わることで Claude を起こさないので外す
+  - `dropped`: 止めるまで動き続けるコマンド(開発用のサーバー、watch など)と、`ignore_task` に当たる処理(公開したページへのコメントの見張りなど、人の入力でしか Claude を起こさないもの)。終わることで Claude を起こさないので外す
   - `crons`: `session_crons`(ScheduleWakeup・CronCreate・/loop)の件数
 - `<session>.monitors`: Monitor の task の ID。Stop の入力では Monitor も `type: "shell"` で載るので、PostToolUse の `tool_response.taskId` で覚えておき、`dropped` には入れない
 
-止めるまで動き続けるコマンドは、`~/.claude/hooks/turn-state.toml` に書く(規則のフォルダの外。規則のファイルは規則しか受け付けないため)。
+止めるまで動き続けるコマンドと、数えない処理は、`~/.claude/hooks/turn-state.toml` に書く(規則のフォルダの外。規則のファイルは規則しか受け付けないため)。
 
 ```toml
 [[resident]]
 pattern = '(pnpm|npm|yarn|bun)(\s+run)?\s+(dev|start|serve|preview)(\s|$)'  # コマンドの頭から当てる
 except = ['\bbuild\b']                                                     # どれにも当たらないこと
+
+[[ignore_task]]
+type = 'monitor'                                  # background_tasks の type と同じ文字列
+description = '^live updates for artifact '       # description のどこかに当たる正規表現
 ```
 
 コマンドは、引用の外の `&&`・`||`・`;`・`|`・改行で区切った部分ごとに照合する。各部分の先頭の `VAR=value`・`timeout <n>`・`nohup`・`exec`・`time`・`(`・`{` は外し、準備だけの部分(`cd`・`sleep`・`rm`・`echo` など)は見ない。照合は引用を含む書いたままの文字列に対して行う。

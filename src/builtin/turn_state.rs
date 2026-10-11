@@ -13,8 +13,10 @@
 //!   `tasks` are the `background_tasks` still running, less the shell
 //!   commands that run until stopped (dev servers, watchers), which go to
 //!   `dropped`: a resident command wakes nobody by finishing. A Monitor's
-//!   task is never dropped, as the watch is how Claude waits. `crons` counts
-//!   `session_crons` (ScheduleWakeup, CronCreate, /loop).
+//!   task is never dropped, as the watch is how Claude waits. Tasks an
+//!   `ignore_task` rule names (a watch that only a person's input wakes,
+//!   such as the comments on a published page) go to `dropped` too.
+//!   `crons` counts `session_crons` (ScheduleWakeup, CronCreate, /loop).
 //!
 //! Folder: `$TURN_STATE_DIR`, else `~/.claude/state/turn-state`.
 //!
@@ -25,6 +27,10 @@
 //! [[resident]]
 //! pattern = '(pnpm|npm|yarn|bun)(\s+run)?\s+dev(\s|$)'  # matched at a head's start
 //! except = ['\bbuild\b']                               # none may match the head
+//!
+//! [[ignore_task]]
+//! type = 'monitor'                                     # the task's type, as written
+//! description = '^live updates for artifact '          # matched anywhere in it
 //! ```
 //!
 //! A command's heads are its parts split at `&&`, `||`, `;`, `|` and line
@@ -70,6 +76,43 @@ static SETUP: LazyLock<Regex> = LazyLock::new(|| {
 struct ConfigFile {
     #[serde(default)]
     resident: Vec<ResidentDef>,
+    #[serde(default)]
+    ignore_task: Vec<IgnoreDef>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct IgnoreDef {
+    #[serde(rename = "type")]
+    kind: String,
+    description: String,
+}
+
+/// A background task that is not work Claude waits for: one of `kind`
+/// whose description `description` matches.
+pub struct IgnoreTask {
+    kind: String,
+    description: Regex,
+}
+
+impl IgnoreTask {
+    pub fn new(kind: &str, description: &str) -> Result<Self, regex::Error> {
+        Ok(Self {
+            kind: kind.to_string(),
+            description: Regex::new(description)?,
+        })
+    }
+
+    fn matches(&self, kind: &str, description: &str) -> bool {
+        self.kind == kind && self.description.is_match(description)
+    }
+}
+
+/// What `~/.claude/hooks/turn-state.toml` says to leave out of `tasks`.
+#[derive(Default)]
+pub struct Config {
+    pub resident: Vec<Resident>,
+    pub ignore: Vec<IgnoreTask>,
 }
 
 #[derive(Deserialize)]
@@ -137,20 +180,21 @@ fn config_path() -> Option<PathBuf> {
     home().map(|h| h.join(".claude").join("hooks").join("turn-state.toml"))
 }
 
-/// The resident rules in `path`; none, with a line in the log, when the file
-/// is there but cannot be used.
-fn load_rules(path: &Path) -> Vec<Resident> {
+/// The rules in `path`; none, with a line in the log, when the file is
+/// there but cannot be used. A rule whose pattern does not compile is left
+/// out, with a line in the log.
+fn load_config(path: &Path) -> Config {
     let Ok(text) = fs::read_to_string(path) else {
-        return Vec::new();
+        return Config::default();
     };
     let parsed = match toml::from_str::<ConfigFile>(&text) {
         Ok(parsed) => parsed,
         Err(why) => {
             log(&format!("turn-state: {}: {why}", path.display()));
-            return Vec::new();
+            return Config::default();
         }
     };
-    parsed
+    let resident = parsed
         .resident
         .iter()
         .filter_map(|def| {
@@ -159,7 +203,17 @@ fn load_rules(path: &Path) -> Vec<Resident> {
                 .map_err(|why| log(&format!("turn-state: {}: {why}", def.pattern)))
                 .ok()
         })
-        .collect()
+        .collect();
+    let ignore = parsed
+        .ignore_task
+        .iter()
+        .filter_map(|def| {
+            IgnoreTask::new(&def.kind, &def.description)
+                .map_err(|why| log(&format!("turn-state: {}: {why}", def.description)))
+                .ok()
+        })
+        .collect();
+    Config { resident, ignore }
 }
 
 fn state_dir() -> Option<PathBuf> {
@@ -213,7 +267,7 @@ pub fn record_monitor(input: &Input, dir: &Path, stem: &str) -> std::io::Result<
 
 /// What Stop's input says is still running, split into the tasks that can
 /// wake the session and the resident commands that cannot.
-pub fn stop_state(input: &Input, watches: &HashSet<String>, rules: &[Resident]) -> Value {
+pub fn stop_state(input: &Input, watches: &HashSet<String>, config: &Config) -> Value {
     let mut tasks = Vec::new();
     let mut dropped = Vec::new();
     let empty = Vec::new();
@@ -230,7 +284,13 @@ pub fn stop_state(input: &Input, watches: &HashSet<String>, rules: &[Resident]) 
             "command": text("command"),
         });
         let is_watch = watches.contains(text("id"));
-        if text("type") == "shell" && !is_watch && is_resident(text("command"), rules) {
+        let is_resident_shell =
+            text("type") == "shell" && !is_watch && is_resident(text("command"), &config.resident);
+        let is_ignored = config
+            .ignore
+            .iter()
+            .any(|rule| rule.matches(text("type"), text("description")));
+        if is_resident_shell || is_ignored {
             dropped.push(entry);
         } else {
             tasks.push(entry);
@@ -265,9 +325,9 @@ pub fn run(input: &Input) -> Vec<Finding> {
     let written = if is_monitor {
         record_monitor(input, &dir, &stem)
     } else {
-        let rules = config_path().map(|p| load_rules(&p)).unwrap_or_default();
+        let config = config_path().map(|p| load_config(&p)).unwrap_or_default();
         write_stop(
-            &stop_state(input, &monitors(&dir, &stem), &rules),
+            &stop_state(input, &monitors(&dir, &stem), &config),
             &dir,
             &stem,
         )
@@ -347,12 +407,18 @@ mod tests {
                 {"id":"a","type":"shell","status":"running","description":"dev","command":"pnpm dev"},
                 {"id":"b","type":"shell","status":"running","description":"build","command":"pnpm build"},
                 {"id":"c","type":"shell","status":"running","description":"tick","command":"pnpm dev"},
-                {"id":"d","type":"subagent","status":"running","description":"research"}
+                {"id":"d","type":"subagent","status":"running","description":"research"},
+                {"id":"e","type":"monitor","status":"running","description":"live updates for artifact https://x (re-armed)"},
+                {"id":"f","type":"monitor","status":"running","description":"deploy log"}
             ],"session_crons":[{"id":"x"}]}"#,
         )
         .unwrap();
         let watches: HashSet<String> = ["c".to_string()].into();
-        let state = stop_state(&input, &watches, &rules());
+        let config = Config {
+            resident: rules(),
+            ignore: vec![IgnoreTask::new("monitor", "^live updates for artifact ").unwrap()],
+        };
+        let state = stop_state(&input, &watches, &config);
         let ids = |key: &str| -> Vec<String> {
             state[key]
                 .as_array()
@@ -361,8 +427,8 @@ mod tests {
                 .map(|t| t["id"].as_str().unwrap().to_string())
                 .collect()
         };
-        assert_eq!(ids("tasks"), vec!["b", "c", "d"]);
-        assert_eq!(ids("dropped"), vec!["a"]);
+        assert_eq!(ids("tasks"), vec!["b", "c", "d", "f"]);
+        assert_eq!(ids("dropped"), vec!["a", "e"]);
         assert_eq!(state["crons"], 1);
     }
 
