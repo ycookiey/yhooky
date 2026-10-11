@@ -1,0 +1,112 @@
+//! stage-own-edit-reminder (PreToolUse, Edit|Write).
+//!
+//! Editing a file that already has uncommitted changes (another session's
+//! or tool's) leaves no way to commit only this edit later, unless a copy
+//! was kept first with `git stage-own-edit begin <file>`. Right before
+//! editing a tracked file that differs from HEAD and has no such copy, says
+//! so; once per session and file. The copy is where git-stage-own-edit
+//! keeps it: `<git-path stage-own-edit>/<sha1 of the repo-relative path>`.
+
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+
+use crate::input::Input;
+use crate::output::{Finding, Kind};
+use crate::text::windows_path;
+
+const ID: &str = "stage-own-edit-reminder";
+
+/// What `git -C <dir> <args>` printed, trimmed, when it succeeded.
+fn git(dir: &Path, args: &[&str]) -> Option<String> {
+    let out = Command::new("git")
+        .arg("-C")
+        .arg(dir)
+        .args(args)
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .output()
+        .ok()?;
+    out.status
+        .success()
+        .then(|| String::from_utf8_lossy(&out.stdout).trim().to_string())
+}
+
+pub fn run(input: &Input) -> Vec<Finding> {
+    let tool = input.tool();
+    if input.event() != "PreToolUse" || (tool != "Edit" && tool != "Write") {
+        return Vec::new();
+    }
+    let path = input.text("tool_input.file_path");
+    if path.is_empty() {
+        return Vec::new();
+    }
+    let path = PathBuf::from(windows_path(&path.replace('\\', "/")));
+    if !path.is_file() {
+        return Vec::new();
+    }
+    let (Some(dir), Some(name)) = (path.parent(), path.file_name()) else {
+        return Vec::new();
+    };
+    let Some(top) = git(dir, &["rev-parse", "--show-toplevel"]) else {
+        return Vec::new();
+    };
+    let name = name.to_string_lossy();
+    let rel = match git(
+        dir,
+        &["ls-files", "--full-name", "--error-unmatch", "--", &name],
+    ) {
+        Some(rel) if !rel.is_empty() => rel,
+        _ => return Vec::new(),
+    };
+    let top = PathBuf::from(&top);
+    let unchanged = Command::new("git")
+        .arg("-C")
+        .arg(&top)
+        .args(["diff", "--quiet", "HEAD", "--", &rel])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok_and(|s| s.success());
+    if unchanged {
+        return Vec::new();
+    }
+    let hash = sha1_smol::Sha1::from(rel.as_bytes()).digest().to_string();
+    let Some(store) = git(&top, &["rev-parse", "--git-path", "stage-own-edit"]) else {
+        return Vec::new();
+    };
+    let store = PathBuf::from(windows_path(&store));
+    let store = if store.is_absolute() {
+        store
+    } else {
+        top.join(store)
+    };
+    if store.join(&hash).exists() {
+        return Vec::new();
+    }
+    let session = match input.text("session_id") {
+        s if s.is_empty() => "none".to_string(),
+        s => s,
+    };
+    let mark = std::env::temp_dir()
+        .join("claude-stage-own-edit-reminder")
+        .join(session)
+        .join(&hash);
+    if mark.exists() {
+        return Vec::new();
+    }
+    if let Some(parent) = mark.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    let _ = fs::write(&mark, "");
+    vec![Finding::new(
+        ID,
+        Kind::Context,
+        format!(
+            "{rel} には HEAD からの未コミットの変更がある(他 session の作業かもしれない)。今回の編集を後で単独で commit するなら、\
+             編集前に `git stage-own-edit begin {rel}` を repo の top で実行し、commit 時に `git stage-own-edit stage {rel}` で\
+             自分の行だけを stage する(docs/git.md)。"
+        ),
+    )]
+}

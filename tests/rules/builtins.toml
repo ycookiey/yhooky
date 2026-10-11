@@ -4,6 +4,7 @@ builtins = [
   "rm-junction-guard",
   "askuser-label-guard",
   "sendfile-to-ysidepaney",
+  "stage-own-edit-reminder",
   "post-push-reminder",
   "head-truncation-reminder",
   "label-guard",

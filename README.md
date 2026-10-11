@@ -79,6 +79,7 @@ message = '''push の前に CI と同じ確認を回したか。'''
 | `rm-junction-guard` | PreToolUse (Bash) | node_modules を含むフォルダへの `rm -r` を止める(junction の先まで消しうる) |
 | `askuser-label-guard` | PreToolUse (AskUserQuestion) | 選択肢の label が A, B, C … の ID で始まらなければ止める |
 | `sendfile-to-ysidepaney` | PreToolUse (SendUserFile) | 画像は ysidepaney に置き、SendUserFile を止める |
+| `stage-own-edit-reminder` | PreToolUse (Edit・Write) | HEAD から変更のある追跡済みのファイルを編集する前に、`git stage-own-edit begin` で写しを取るよう知らせる(session とファイルごとに 1 回) |
 | `post-push-reminder` | PostToolUse (Bash) | 成功した push の後、repo の push 後の script を知らせる |
 | `head-truncation-reminder` | PostToolUse (Bash) | 出力が最後の `\| head` の上限に届いたら、件数を数えるよう知らせる |
 | `label-guard` | Stop | ギリシャ文字・ローマ数字の見出しを止める |

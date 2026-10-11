@@ -1,6 +1,6 @@
 [package]
 name = "yhooky"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 authors = ["ycookiey"]
@@ -19,6 +19,7 @@ path = "src/main.rs"
 regex = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+sha1_smol = "1"
 toml = "0.8"
 
 [dev-dependencies]

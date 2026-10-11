@@ -44,3 +44,50 @@ fn language_check_lists_the_turns() {
         ]
     );
 }
+
+#[test]
+fn stage_own_edit_reminds_once_for_a_changed_file() {
+    use std::process::Command;
+    let dir = tempfile::tempdir().unwrap();
+    let repo = dir.path();
+    let git = |args: &[&str]| {
+        assert!(
+            Command::new("git")
+                .arg("-C")
+                .arg(repo)
+                .args(args)
+                .status()
+                .unwrap()
+                .success()
+        )
+    };
+    git(&["init", "-q"]);
+    git(&["config", "user.email", "t@example.com"]);
+    git(&["config", "user.name", "t"]);
+    std::fs::write(repo.join("a.txt"), "one\n").unwrap();
+    std::fs::write(repo.join("b.txt"), "one\n").unwrap();
+    git(&["add", "a.txt", "b.txt"]);
+    git(&["commit", "-q", "-m", "x"]);
+    std::fs::write(repo.join("a.txt"), "two\n").unwrap();
+    let session = format!("test-{}", std::process::id());
+    let input = |file: &str| {
+        let raw = serde_json::json!({
+            "hook_event_name": "PreToolUse",
+            "tool_name": "Edit",
+            "session_id": session,
+            "tool_input": { "file_path": repo.join(file).to_string_lossy() },
+        });
+        yhooky::input::Input::parse(&raw.to_string()).unwrap()
+    };
+    let first = yhooky::builtin::stage_own_edit::run(&input("a.txt"));
+    assert_eq!(first.len(), 1, "a changed file is reminded");
+    assert!(first[0].message.starts_with("a.txt には"));
+    assert!(
+        yhooky::builtin::stage_own_edit::run(&input("a.txt")).is_empty(),
+        "only once per session and file"
+    );
+    assert!(
+        yhooky::builtin::stage_own_edit::run(&input("b.txt")).is_empty(),
+        "an unchanged file is not"
+    );
+}
