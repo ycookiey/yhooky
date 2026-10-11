@@ -85,6 +85,28 @@ message = '''push の前に CI と同じ確認を回したか。'''
 | `head-truncation-reminder` | PostToolUse (Bash) | 出力が最後の `\| head` の上限に届いたら、件数を数えるよう知らせる |
 | `label-guard` | Stop | ギリシャ文字・ローマ数字の見出しを止める |
 | `language-guard` | Stop | 最後の返答が英語主体なら止める |
+| `turn-state` | Stop・PostToolUse (Monitor) | ターンの終わりに、まだ動いている裏の処理を `<session>.stop.json` に書く(下の「turn-state」)。何も返さない |
+
+### turn-state
+
+ターンの終わりに、Claude が自分で続けるための裏の処理(完了を待つ shell・Monitor・subagent・予約した起動)が残っているかを、ファイルに書く。これを読むツール(plugin など)が、Claude が次にユーザーの入力を待っているのか、裏の処理の完了を待っているのかを見分ける。
+
+- 置き場所: `$TURN_STATE_DIR`、なければ `~/.claude/state/turn-state`
+- `<session>.stop.json`(Stop のたびに書き直す): `{ "at": <ms>, "tasks": [...], "dropped": [...], "crons": <件数> }`
+  - `tasks`: Stop の入力の `background_tasks` のうち、自分で終わって Claude を起こしうるもの(`id`・`type`・`description`・`command`)
+  - `dropped`: 止めるまで動き続けるコマンド(開発用のサーバー、watch など)。終わることで Claude を起こさないので外す
+  - `crons`: `session_crons`(ScheduleWakeup・CronCreate・/loop)の件数
+- `<session>.monitors`: Monitor の task の ID。Stop の入力では Monitor も `type: "shell"` で載るので、PostToolUse の `tool_response.taskId` で覚えておき、`dropped` には入れない
+
+止めるまで動き続けるコマンドは、`~/.claude/hooks/turn-state.toml` に書く(規則のフォルダの外。規則のファイルは規則しか受け付けないため)。
+
+```toml
+[[resident]]
+pattern = '(pnpm|npm|yarn|bun)(\s+run)?\s+(dev|start|serve|preview)(\s|$)'  # コマンドの頭から当てる
+except = ['\bbuild\b']                                                     # どれにも当たらないこと
+```
+
+コマンドは、引用の外の `&&`・`||`・`;`・`|`・改行で区切った部分ごとに照合する。各部分の先頭の `VAR=value`・`timeout <n>`・`nohup`・`exec`・`time`・`(`・`{` は外し、準備だけの部分(`cd`・`sleep`・`rm`・`echo` など)は見ない。照合は引用を含む書いたままの文字列に対して行う。
 
 ## コマンド
 
