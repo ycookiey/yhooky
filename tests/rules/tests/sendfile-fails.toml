@@ -1,0 +1,10 @@
+# When posting fails, or ysidepaney is missing, SendUserFile goes on.
+[setup]
+env = { YSIDEPANEY_BIN = "{root_win}/post.cmd" }
+files = { "post.cmd" = "@exit /b 1\r\n" }
+
+[[case]]
+name = "post-fails"
+rule = "sendfile-to-ysidepaney"
+expect = "quiet"
+input = { tool_name = "SendUserFile", cwd = "C:/work", tool_input = { files = ["a.png"] } }

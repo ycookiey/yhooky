@@ -1,0 +1,68 @@
+[setup]
+files = { "repo/scripts/watch-push.sh" = "", "repo/scripts/flows-publish.sh" = "", "plain/README.md" = "" }
+cwd = "{root_win}/plain"
+
+[[case]]
+name = "cd-then-push"
+rule = "post-push-reminder"
+expect = "context"
+contains = "scripts/flows-publish.sh 6a318de"
+input = { hook_event_name = "PostToolUse", tool_input = { command = "cd {root}/repo && git push origin HEAD:main 2>&1 | tail -1" }, tool_response = { stdout = "ff-ok\n   eb44212..6a318de  HEAD -> main\n", stderr = "" } }
+
+[[case]]
+name = "names-both"
+rule = "post-push-reminder"
+expect = "context"
+contains = "scripts/watch-push.sh 6a318de"
+input = { hook_event_name = "PostToolUse", tool_input = { command = "cd {root}/repo && git push origin HEAD:main" }, tool_response = { stdout = "   eb44212..6a318de  HEAD -> main\n" } }
+
+[[case]]
+name = "git-C"
+rule = "post-push-reminder"
+expect = "context"
+contains = "6a318de"
+input = { hook_event_name = "PostToolUse", tool_input = { command = "git -C {root}/repo push origin HEAD:main" }, tool_response = { stdout = "   eb44212..6a318de  HEAD -> main\n" } }
+
+[[case]]
+name = "stderr-only"
+rule = "post-push-reminder"
+expect = "context"
+contains = "cf4686c"
+input = { hook_event_name = "PostToolUse", tool_input = { command = "cd {root}/repo && git push" }, tool_response = { stdout = "", stderr = "To github.com:o/r.git\n   1a5eeb1..cf4686c  HEAD -> main\n" } }
+
+[[case]]
+name = "forced"
+rule = "post-push-reminder"
+expect = "context"
+contains = "cf4686c"
+input = { hook_event_name = "PostToolUse", tool_input = { command = "cd {root}/repo && scripts/force-push-safely.sh x && git push --force-with-lease" }, tool_response = { stdout = " + 1a5eeb1...cf4686c main -> main (forced update)\n" } }
+
+[[case]]
+name = "no-scripts"
+rule = "post-push-reminder"
+expect = "quiet"
+input = { hook_event_name = "PostToolUse", tool_input = { command = "cd {root}/plain && git push origin HEAD:main" }, tool_response = { stdout = "   eb44212..6a318de  HEAD -> main\n" } }
+
+[[case]]
+name = "up-to-date"
+rule = "post-push-reminder"
+expect = "quiet"
+input = { hook_event_name = "PostToolUse", tool_input = { command = "cd {root}/repo && git push" }, tool_response = { stdout = "Everything up-to-date\n" } }
+
+[[case]]
+name = "rejected"
+rule = "post-push-reminder"
+expect = "quiet"
+input = { hook_event_name = "PostToolUse", tool_input = { command = "cd {root}/repo && git push" }, tool_response = { stderr = " ! [rejected]        main -> main (fetch first)\n" } }
+
+[[case]]
+name = "not-a-push"
+rule = "post-push-reminder"
+expect = "quiet"
+input = { hook_event_name = "PostToolUse", tool_input = { command = "cd {root}/repo && git status" }, tool_response = { stdout = "   eb44212..6a318de  HEAD -> main\n" } }
+
+[[case]]
+name = "push-word-only"
+rule = "post-push-reminder"
+expect = "quiet"
+input = { hook_event_name = "PostToolUse", tool_input = { command = "cd {root}/repo && echo pushed" }, tool_response = { stdout = "   eb44212..6a318de  HEAD -> main\n" } }

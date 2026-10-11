@@ -1,0 +1,95 @@
+[setup]
+env = { LANGUAGE_GUARD_WAIT = "0" }
+files = { "t.jsonl" = '''
+{"type":"user","message":{"content":"次の作業へ"}}
+{"type":"assistant","message":{"content":[{"type":"text","text":"Checking the files first, then the tests."}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"Bash","input":{}}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"ok"}]}}
+{"type":"assistant","message":{"content":[{"type":"text","text":"Step two is committed. Next I will write the admin login screen and its list."}]}}
+''' }
+
+[[case]]
+name = "english"
+rule = "language-guard"
+expect = "block"
+input = { hook_event_name = "Stop", last_assistant_message = "Found the cause: the kit's ImageUpload shows the saved URL as is, so the icon fails on the http dev server." }
+
+[[case]]
+name = "japanese"
+rule = "language-guard"
+expect = "quiet"
+input = { hook_event_name = "Stop", last_assistant_message = "原因が分かった。kit の ImageUpload が保存した URL をそのまま表示するので、http の開発サーバーでアイコンが出ない。" }
+
+[[case]]
+name = "code-block"
+rule = "language-guard"
+expect = "quiet"
+input = { hook_event_name = "Stop", last_assistant_message = "確認した。\n\n```ts\nexport const imageSrcOf = (url: string | null | undefined): string | null => {\n  return storedImagePathOf(url) ?? url\n}\n```\n\n`createEntryEditClient` と `useHistoryStepNavigation` を使う。" }
+
+[[case]]
+name = "urls"
+rule = "language-guard"
+expect = "quiet"
+input = { hook_event_name = "Stop", last_assistant_message = "詳しくは https://github.com/example/claude-code-guard/blob/main/hooks/guard.py と https://code.claude.com/docs/en/hooks を参照。" }
+
+[[case]]
+name = "short"
+rule = "language-guard"
+expect = "quiet"
+input = { hook_event_name = "Stop", last_assistant_message = "OK, done." }
+
+[[case]]
+name = "rewrite-is-not-blocked"
+rule = "language-guard"
+expect = "quiet"
+input = { hook_event_name = "Stop", stop_hook_active = true, last_assistant_message = "Found the cause: the kit's ImageUpload shows the saved URL as is, so the icon fails on the http dev server." }
+
+[[case]]
+name = "english-table"
+rule = "language-guard"
+expect = "block"
+input = { hook_event_name = "Stop", last_assistant_message = "| | Approach | Pros |\n|---|---|---|\n| **U1** | Read the script and vendor it | Covers more than T1 |\n| U2 | Write my own bash | Matches label-guard |" }
+
+[[case]]
+name = "identifiers"
+rule = "language-guard"
+expect = "quiet"
+input = { hook_event_name = "Stop", last_assistant_message = "kit の `TournamentEntryEdit` に `renderNoToken`・`renderNotFoundExtras`・`renderDoneActions` の枠を付け、`EntryEditConnection` を受ける。test は 15 件。" }
+
+[[case]]
+name = "quoted"
+rule = "language-guard"
+expect = "quiet"
+input = { hook_event_name = "Stop", last_assistant_message = "> Quoted English text from a peer session that is long enough to count as English.\n\n引用は除いて数える。" }
+
+[[case]]
+name = "mail-and-link"
+rule = "language-guard"
+expect = "quiet"
+input = { hook_event_name = "Stop", last_assistant_message = "連絡は support@example.com と [the documentation page for hooks](https://code.claude.com/docs/en/hooks) で受け付ける。" }
+
+[[case]]
+name = "dense-japanese"
+rule = "language-guard"
+expect = "quiet"
+input = { hook_event_name = "Stop", last_assistant_message = "Group C-L 全反映完了 fast-forward push。C-3 CharacterPicker fieldset legend count live region を追加、C-4 ImageUpload peer-focus-visible label status live を追加、C-6 Completion Confirmation heading mount focus を移動。" }
+
+[[case]]
+name = "english-with-a-japanese-term"
+rule = "language-guard"
+expect = "block"
+input = { hook_event_name = "Stop", last_assistant_message = "The label 「アイコン画像」 is lighter and smaller than the other fields' labels, because ImageUpload uses font-medium while FieldShell uses font-semibold, so I aligned them through a shared constant in a new internal module." }
+
+[[case]]
+name = "transcript-final-text"
+rule = "language-guard"
+expect = "block"
+contains = "Step two is committed"
+input = { hook_event_name = "Stop", stop_hook_active = false, transcript_path = "{root_win}/t.jsonl" }
+
+[[case]]
+name = "transcript-text-before-tool-call-not-judged"
+rule = "language-guard"
+expect = "block"
+excludes = "Checking the files first"
+input = { hook_event_name = "Stop", stop_hook_active = false, transcript_path = "{root_win}/t.jsonl" }

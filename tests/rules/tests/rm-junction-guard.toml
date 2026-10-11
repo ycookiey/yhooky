@@ -1,0 +1,64 @@
+[setup]
+files = { "app/node_modules/a/index.js" = "", "deep/x/y/node_modules/b.js" = "", "deeper/x/y/z/node_modules/c.js" = "", "plain/a.txt" = "" }
+cwd = "{root_win}"
+
+[[case]]
+name = "holds-node-modules"
+rule = "rm-junction-guard"
+expect = "deny"
+contains = "rm -r の対象 {root}/app は node_modules を含む"
+command = "rm -rf {root}/app"
+
+[[case]]
+name = "relative"
+rule = "rm-junction-guard"
+expect = "deny"
+command = "cd x; rm -r -f app"
+
+[[case]]
+name = "windows-path"
+rule = "rm-junction-guard"
+expect = "deny"
+command = "rm --recursive '{root_win}/app'"
+
+[[case]]
+name = "three-levels-down"
+rule = "rm-junction-guard"
+expect = "deny"
+command = "rm -rf deep"
+
+[[case]]
+name = "four-levels-down"
+rule = "rm-junction-guard"
+expect = "quiet"
+command = "rm -rf deeper"
+
+[[case]]
+name = "plain-folder"
+rule = "rm-junction-guard"
+expect = "quiet"
+command = "rm -rf {root}/plain"
+
+[[case]]
+name = "not-recursive"
+rule = "rm-junction-guard"
+expect = "quiet"
+command = "rm -f {root}/app"
+
+[[case]]
+name = "variable"
+rule = "rm-junction-guard"
+expect = "quiet"
+command = "rm -rf $DIR/app"
+
+[[case]]
+name = "git-rm"
+rule = "rm-junction-guard"
+expect = "quiet"
+command = "git rm -r app"
+
+[[case]]
+name = "after-and"
+rule = "rm-junction-guard"
+expect = "deny"
+command = "ls && rm -rf app"

@@ -1,0 +1,48 @@
+[[case]]
+name = "ids-with-space"
+rule = "askuser-label-guard"
+expect = "quiet"
+input = { tool_name = "AskUserQuestion", tool_input = { questions = [{ question = "q", options = [{ label = "A 並列化（推奨）" }, { label = "B 先行起動" }] }] } }
+
+[[case]]
+name = "ids-with-punct"
+rule = "askuser-label-guard"
+expect = "quiet"
+input = { tool_name = "AskUserQuestion", tool_input = { questions = [{ question = "q", options = [{ label = "A: 並列化" }, { label = "B+C 両方" }, { label = "C（推奨）" }] }] } }
+
+[[case]]
+name = "numbered-ids"
+rule = "askuser-label-guard"
+expect = "quiet"
+input = { tool_name = "AskUserQuestion", tool_input = { questions = [{ question = "q", options = [{ label = "L1 hook" }, { label = "L2 docs" }] }] } }
+
+[[case]]
+name = "id-only"
+rule = "askuser-label-guard"
+expect = "quiet"
+input = { tool_name = "AskUserQuestion", tool_input = { questions = [{ question = "q", options = [{ label = "A" }, { label = "B" }] }] } }
+
+[[case]]
+name = "no-id"
+rule = "askuser-label-guard"
+expect = "deny"
+contains = "「並列化」「先行起動」"
+input = { tool_name = "AskUserQuestion", tool_input = { questions = [{ question = "q", options = [{ label = "並列化" }, { label = "先行起動" }] }] } }
+
+[[case]]
+name = "partly-missing"
+rule = "askuser-label-guard"
+expect = "deny"
+input = { tool_name = "AskUserQuestion", tool_input = { questions = [{ question = "q", options = [{ label = "A 並列化" }, { label = "先行起動" }] }] } }
+
+[[case]]
+name = "word-start"
+rule = "askuser-label-guard"
+expect = "deny"
+input = { tool_name = "AskUserQuestion", tool_input = { questions = [{ question = "q", options = [{ label = "Apply" }, { label = "Both" }] }] } }
+
+[[case]]
+name = "lowercase"
+rule = "askuser-label-guard"
+expect = "deny"
+input = { tool_name = "AskUserQuestion", tool_input = { questions = [{ question = "q", options = [{ label = "a 並列化" }, { label = "b 先行起動" }] }] } }

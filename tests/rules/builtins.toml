@@ -1,0 +1,11 @@
+# Turns on every built-in check, for the cases in tests/rules/tests.
+builtins = [
+  "backslash-shrink-guard",
+  "rm-junction-guard",
+  "askuser-label-guard",
+  "sendfile-to-ysidepaney",
+  "post-push-reminder",
+  "head-truncation-reminder",
+  "label-guard",
+  "language-guard",
+]

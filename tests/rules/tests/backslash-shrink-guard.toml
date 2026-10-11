@@ -1,0 +1,80 @@
+[[case]]
+name = "heredoc-python"
+rule = "backslash-shrink-guard"
+expect = "deny"
+command = '''python - <<'EOF'
+print("CR は \\r\\n")
+EOF'''
+
+[[case]]
+name = "heredoc-unquoted-word"
+rule = "backslash-shrink-guard"
+expect = "deny"
+command = '''cat <<EOF > a.txt
+C:\\Users
+EOF'''
+
+[[case]]
+name = "heredoc-dash"
+rule = "backslash-shrink-guard"
+expect = "deny"
+command = "cat <<-END\n\ta\\\\b\n\tEND"
+
+[[case]]
+name = "single-quote"
+rule = "backslash-shrink-guard"
+expect = "deny"
+command = '''printf '%s\n' 'a\\b' '''
+
+[[case]]
+name = "ansi-c"
+rule = "backslash-shrink-guard"
+expect = "deny"
+command = '''echo $'a\\b' '''
+
+[[case]]
+name = "double-quote"
+rule = "backslash-shrink-guard"
+expect = "context"
+command = '''grep -n "a\\.b" file.txt'''
+
+[[case]]
+name = "bare"
+rule = "backslash-shrink-guard"
+expect = "context"
+command = '''echo a\\b'''
+
+[[case]]
+name = "after-heredoc"
+rule = "backslash-shrink-guard"
+expect = "context"
+command = '''cat <<'EOF'
+plain
+EOF
+grep "x\\.y" f'''
+
+[[case]]
+name = "no-backslash"
+rule = "backslash-shrink-guard"
+expect = "quiet"
+command = "ls -la /c/Main"
+
+[[case]]
+name = "single-backslash"
+rule = "backslash-shrink-guard"
+expect = "quiet"
+command = '''printf '%s\n' 'a\b' "C:\Main"'''
+
+[[case]]
+name = "heredoc-single-backslash"
+rule = "backslash-shrink-guard"
+expect = "quiet"
+command = '''python - <<'EOF'
+print("a\nb")
+EOF'''
+
+[[case]]
+name = "single-quote-in-double"
+rule = "backslash-shrink-guard"
+expect = "quiet"
+command = '''echo "it's \"ok\""'''

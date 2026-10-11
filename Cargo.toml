@@ -1,0 +1,29 @@
+[package]
+name = "yhooky"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+authors = ["ycookiey"]
+repository = "https://github.com/ycookiey/yhooky"
+description = "One fast binary that runs Claude Code hooks: rules in TOML files, plus built-in checks for the cases a pattern cannot express"
+
+[lib]
+name = "yhooky"
+path = "src/lib.rs"
+
+[[bin]]
+name = "yhooky"
+path = "src/main.rs"
+
+[dependencies]
+regex = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+lto = true
+codegen-units = 1

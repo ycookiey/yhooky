@@ -1,0 +1,37 @@
+# A stand-in for ysidepaney that accepts every post.
+[setup]
+env = { YSIDEPANEY_BIN = "{root_win}/post.cmd" }
+files = { "post.cmd" = "@exit /b 0\r\n" }
+
+[[case]]
+name = "one-png"
+rule = "sendfile-to-ysidepaney"
+expect = "deny"
+contains = "画像 1 枚(a.png)"
+input = { tool_name = "SendUserFile", cwd = "C:/work", session_id = "s1", tool_input = { files = ['C:\shots\a.png'], caption = "比較の画像" } }
+
+[[case]]
+name = "two-images"
+rule = "sendfile-to-ysidepaney"
+expect = "deny"
+contains = "画像 2 枚(a.PNG b.jpg)"
+input = { tool_name = "SendUserFile", cwd = "C:/work", tool_input = { files = ["/tmp/a.PNG", "/tmp/b.jpg"] } }
+
+[[case]]
+name = "mixed"
+rule = "sendfile-to-ysidepaney"
+expect = "deny"
+contains = "画像以外(report.html)を送るなら"
+input = { tool_name = "SendUserFile", cwd = "C:/work", tool_input = { files = ["a.png", "report.html"], caption = "見て" } }
+
+[[case]]
+name = "html-only"
+rule = "sendfile-to-ysidepaney"
+expect = "quiet"
+input = { tool_name = "SendUserFile", cwd = "C:/work", tool_input = { files = ["report.html"] } }
+
+[[case]]
+name = "no-files"
+rule = "sendfile-to-ysidepaney"
+expect = "quiet"
+input = { tool_name = "SendUserFile", cwd = "C:/work", tool_input = { files = [] } }

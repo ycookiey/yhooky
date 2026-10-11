@@ -1,0 +1,44 @@
+[[case]]
+name = "greek-labels"
+rule = "label-guard"
+expect = "block"
+contains = "Greek letters"
+input = { hook_event_name = "Stop", last_assistant_message = "案は 2 つ。\n- α: 並列化\n- β: 先行起動" }
+
+[[case]]
+name = "greek-plan-word"
+rule = "label-guard"
+expect = "block"
+input = { hook_event_name = "Stop", last_assistant_message = "α案なら速い。" }
+
+[[case]]
+name = "roman-list"
+rule = "label-guard"
+expect = "block"
+contains = "Roman numerals"
+input = { hook_event_name = "Stop", last_assistant_message = "i. 並列化\nii. 先行起動" }
+
+[[case]]
+name = "greek-term"
+rule = "label-guard"
+expect = "quiet"
+input = { hook_event_name = "Stop", last_assistant_message = "α粒子と β分布の話。" }
+
+[[case]]
+name = "in-code"
+rule = "label-guard"
+expect = "quiet"
+input = { hook_event_name = "Stop", last_assistant_message = "```\n- α: x\n```\n`β)` は引用。\n> i. quoted" }
+
+[[case]]
+name = "abc-labels"
+rule = "label-guard"
+expect = "quiet"
+input = { hook_event_name = "Stop", last_assistant_message = "- A: 並列化\n- B: 先行起動" }
+
+[[case]]
+name = "both"
+rule = "label-guard"
+expect = "block"
+contains = "Greek letters (α, β, γ, ...), Roman numerals"
+input = { hook_event_name = "Stop", last_assistant_message = "- α: x\ni) y" }

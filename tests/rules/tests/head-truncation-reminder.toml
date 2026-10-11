@@ -1,0 +1,80 @@
+# The output is the lines "1" to "N", one per line.
+
+[[case]]
+name = "default-ten-full"
+rule = "head-truncation-reminder"
+expect = "context"
+input = { hook_event_name = "PostToolUse", tool_input = { command = 'grep -rn "Team" packages | head' }, tool_response = { stdout = "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n", stderr = "" } }
+
+[[case]]
+name = "default-ten-short"
+rule = "head-truncation-reminder"
+expect = "quiet"
+input = { hook_event_name = "PostToolUse", tool_input = { command = 'grep -rn "Team" packages | head' }, tool_response = { stdout = "1\n2\n3\n4\n" } }
+
+[[case]]
+name = "dash-n"
+rule = "head-truncation-reminder"
+expect = "context"
+contains = "20 行"
+input = { hook_event_name = "PostToolUse", tool_input = { command = 'grep -rn x . | head -n 20' }, tool_response = { stdout = "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n13\n14\n15\n16\n17\n18\n19\n20" } }
+
+[[case]]
+name = "dash-number"
+rule = "head-truncation-reminder"
+expect = "context"
+input = { hook_event_name = "PostToolUse", tool_input = { command = 'grep -rn x . | cut -c1-150 | head -3' }, tool_response = { stdout = "1\n2\n3\n" } }
+
+[[case]]
+name = "under-limit"
+rule = "head-truncation-reminder"
+expect = "quiet"
+input = { hook_event_name = "PostToolUse", tool_input = { command = 'grep -rn x . | head -30' }, tool_response = { stdout = "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n" } }
+
+[[case]]
+name = "spaced-n"
+rule = "head-truncation-reminder"
+expect = "context"
+input = { hook_event_name = "PostToolUse", tool_input = { command = 'git log --oneline | head -n5' }, tool_response = { stdout = "1\n2\n3\n4\n5\n" } }
+
+[[case]]
+name = "several-statements"
+rule = "head-truncation-reminder"
+expect = "quiet"
+input = { hook_event_name = "PostToolUse", tool_input = { command = 'ls | head -2; grep -rn x . | head -4' }, tool_response = { stdout = "1\n2\n3\n4\n" } }
+
+[[case]]
+name = "and-chain"
+rule = "head-truncation-reminder"
+expect = "quiet"
+input = { hook_event_name = "PostToolUse", tool_input = { command = 'python -c "print(1)"; ls .claude/hooks | head' }, tool_response = { stdout = "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n" } }
+
+[[case]]
+name = "cd-then-pipeline"
+rule = "head-truncation-reminder"
+expect = "context"
+input = { hook_event_name = "PostToolUse", tool_input = { command = 'cd /c/repo && grep -rn x . | head -3' }, tool_response = { stdout = "1\n2\n3\n" } }
+
+[[case]]
+name = "cd-twice"
+rule = "head-truncation-reminder"
+expect = "context"
+input = { hook_event_name = "PostToolUse", tool_input = { command = 'cd /c/a && cd b && git grep -n x | head -2' }, tool_response = { stdout = "1\n2\n" } }
+
+[[case]]
+name = "no-head"
+rule = "head-truncation-reminder"
+expect = "quiet"
+input = { hook_event_name = "PostToolUse", tool_input = { command = 'grep -rn x .' }, tool_response = { stdout = "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n" } }
+
+[[case]]
+name = "head-on-file"
+rule = "head-truncation-reminder"
+expect = "quiet"
+input = { hook_event_name = "PostToolUse", tool_input = { command = 'head -2 README.md' }, tool_response = { stdout = "1\n2\n" } }
+
+[[case]]
+name = "tail-not-head"
+rule = "head-truncation-reminder"
+expect = "quiet"
+input = { hook_event_name = "PostToolUse", tool_input = { command = 'git log | tail -2' }, tool_response = { stdout = "1\n2\n" } }
