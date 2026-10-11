@@ -64,30 +64,185 @@ fn stage_own_edit_reminds_once_for_a_changed_file() {
     git(&["init", "-q"]);
     git(&["config", "user.email", "t@example.com"]);
     git(&["config", "user.name", "t"]);
-    std::fs::write(repo.join("a.txt"), "one\n").unwrap();
-    std::fs::write(repo.join("b.txt"), "one\n").unwrap();
-    git(&["add", "a.txt", "b.txt"]);
+    std::fs::create_dir_all(repo.join("sub")).unwrap();
+    for file in ["sub/dirty.md", "clean.md", "begun.md"] {
+        std::fs::write(repo.join(file), "one\n").unwrap();
+    }
+    git(&["add", "sub/dirty.md", "clean.md", "begun.md"]);
     git(&["commit", "-q", "-m", "x"]);
-    std::fs::write(repo.join("a.txt"), "two\n").unwrap();
-    let session = format!("test-{}", std::process::id());
-    let input = |file: &str| {
+    std::fs::write(repo.join("sub/dirty.md"), "two\n").unwrap();
+    std::fs::write(repo.join("begun.md"), "two\n").unwrap();
+    std::fs::write(repo.join("untracked.md"), "one\n").unwrap();
+    // A copy kept by `git stage-own-edit begin begun.md`.
+    let store = repo.join(".git").join("stage-own-edit");
+    std::fs::create_dir_all(&store).unwrap();
+    let hash = sha1_smol::Sha1::from("begun.md").digest().to_string();
+    std::fs::write(store.join(hash), "one\n").unwrap();
+    let outside = tempfile::tempdir().unwrap();
+    std::fs::write(outside.path().join("tmp"), "x").unwrap();
+
+    let run = |path: std::path::PathBuf, session: &str| {
         let raw = serde_json::json!({
             "hook_event_name": "PreToolUse",
             "tool_name": "Edit",
-            "session_id": session,
-            "tool_input": { "file_path": repo.join(file).to_string_lossy() },
+            "session_id": format!("{session}-{}", std::process::id()),
+            "tool_input": { "file_path": path.to_string_lossy() },
         });
-        yhooky::input::Input::parse(&raw.to_string()).unwrap()
+        let input = yhooky::input::Input::parse(&raw.to_string()).unwrap();
+        yhooky::builtin::stage_own_edit::run(&input)
     };
-    let first = yhooky::builtin::stage_own_edit::run(&input("a.txt"));
-    assert_eq!(first.len(), 1, "a changed file is reminded");
-    assert!(first[0].message.starts_with("a.txt には"));
+    let first = run(repo.join("sub/dirty.md"), "s1");
+    assert_eq!(first.len(), 1, "dirty tracked file");
+    assert!(first[0].message.starts_with("sub/dirty.md には"));
     assert!(
-        yhooky::builtin::stage_own_edit::run(&input("a.txt")).is_empty(),
-        "only once per session and file"
+        run(repo.join("sub/dirty.md"), "s1").is_empty(),
+        "same session again"
+    );
+    assert_eq!(
+        run(repo.join("sub/dirty.md"), "s2").len(),
+        1,
+        "other session"
     );
     assert!(
-        yhooky::builtin::stage_own_edit::run(&input("b.txt")).is_empty(),
-        "an unchanged file is not"
+        run(repo.join("clean.md"), "s1").is_empty(),
+        "clean tracked file"
     );
+    assert!(
+        run(repo.join("untracked.md"), "s1").is_empty(),
+        "untracked file"
+    );
+    assert!(run(repo.join("new.md"), "s1").is_empty(), "new file");
+    assert!(
+        run(repo.join("begun.md"), "s1").is_empty(),
+        "copy already kept"
+    );
+    assert!(
+        run(outside.path().join("tmp"), "s1").is_empty(),
+        "outside a repository"
+    );
+}
+
+#[test]
+fn push_check_stops_the_first_push_per_session_repo_and_head() {
+    use std::path::Path;
+    use std::process::Command;
+    let state = tempfile::tempdir().unwrap();
+    // SAFETY: no other test reads this variable.
+    unsafe { std::env::set_var("PUSH_CHECK_STATE_DIR", state.path()) };
+    let root = tempfile::tempdir().unwrap();
+    let repo = root.path().join("repo");
+    let other = root.path().join("other");
+    let plain = root.path().join("plain");
+    std::fs::create_dir_all(&plain).unwrap();
+    let commit = |dir: &Path| {
+        let ok = Command::new("git")
+            .arg("-C")
+            .arg(dir)
+            .args(["-c", "user.name=t", "-c", "user.email=t@t"])
+            .args(["commit", "-q", "--allow-empty", "-m", "x"])
+            .status()
+            .unwrap()
+            .success();
+        assert!(ok);
+    };
+    for dir in [&repo, &other] {
+        assert!(
+            Command::new("git")
+                .args(["init", "-q"])
+                .arg(dir)
+                .status()
+                .unwrap()
+                .success()
+        );
+        commit(dir);
+    }
+    let p = |path: &Path| {
+        path.to_string_lossy()
+            .replace(std::path::MAIN_SEPARATOR, "/")
+    };
+    let check = |command: String, session: &str, cwd: &str| -> &'static str {
+        let raw = serde_json::json!({
+            "hook_event_name": "PreToolUse",
+            "tool_name": "Bash",
+            "session_id": session,
+            "cwd": cwd,
+            "tool_input": { "command": command },
+        });
+        let input = yhooky::input::Input::parse(&raw.to_string()).unwrap();
+        if yhooky::builtin::push_check::run(&input).is_empty() {
+            "pass"
+        } else {
+            "deny"
+        }
+    };
+    let (r, o, pl, top) = (p(&repo), p(&other), p(&plain), p(root.path()));
+    let cases = [
+        (
+            "not a push",
+            format!("cd {r} && git status"),
+            "s1",
+            &pl,
+            "pass",
+        ),
+        (
+            "push as a word",
+            format!("cd {r} && echo pushed"),
+            "s1",
+            &pl,
+            "pass",
+        ),
+        (
+            "first push",
+            format!("cd {r} && git push origin HEAD:main"),
+            "s1",
+            &pl,
+            "deny",
+        ),
+        (
+            "same HEAD again",
+            format!("cd {r} && git push origin HEAD:main 2>&1 | tail -1"),
+            "s1",
+            &pl,
+            "pass",
+        ),
+        (
+            "same HEAD with -C",
+            format!("git -C {r} push"),
+            "s1",
+            &pl,
+            "pass",
+        ),
+        (
+            "other session",
+            format!("cd {r} && git push"),
+            "s2",
+            &pl,
+            "deny",
+        ),
+        ("other repo", format!("git -C {o} push"), "s1", &pl, "deny"),
+        (
+            "relative cd",
+            "cd other && git push".to_string(),
+            "s1",
+            &top,
+            "pass",
+        ),
+    ];
+    for (name, command, session, cwd, want) in cases {
+        assert_eq!(check(command, session, cwd), want, "{name}");
+    }
+    commit(&repo);
+    let cases = [
+        ("new HEAD", format!("cd {r} && git push"), "deny"),
+        ("new HEAD again", format!("cd {r} && git push"), "pass"),
+        ("no repository", format!("cd {pl} && git push"), "deny"),
+        (
+            "no repository again",
+            format!("cd {pl} && git push"),
+            "pass",
+        ),
+    ];
+    for (name, command, want) in cases {
+        assert_eq!(check(command, "s1", &pl), want, "{name}");
+    }
 }

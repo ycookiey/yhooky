@@ -80,6 +80,7 @@ message = '''push の前に CI と同じ確認を回したか。'''
 | `askuser-label-guard` | PreToolUse (AskUserQuestion) | 選択肢の label が A, B, C … の ID で始まらなければ止める |
 | `sendfile-to-ysidepaney` | PreToolUse (SendUserFile) | 画像は ysidepaney に置き、SendUserFile を止める |
 | `stage-own-edit-reminder` | PreToolUse (Edit・Write) | HEAD から変更のある追跡済みのファイルを編集する前に、`git stage-own-edit begin` で写しを取るよう知らせる(session とファイルごとに 1 回) |
+| `push-check-reminder` | PreToolUse (Bash) | `git push` を session・repo・HEAD の組ごとに初回だけ止め、push 前の確認の項目を返す。同じ push の 2 回目は通す |
 | `post-push-reminder` | PostToolUse (Bash) | 成功した push の後、repo の push 後の script を知らせる |
 | `head-truncation-reminder` | PostToolUse (Bash) | 出力が最後の `\| head` の上限に届いたら、件数を数えるよう知らせる |
 | `label-guard` | Stop | ギリシャ文字・ローマ数字の見出しを止める |

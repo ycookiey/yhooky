@@ -13,6 +13,7 @@ pub mod head_trunc;
 pub mod label;
 pub mod language;
 pub mod post_push;
+pub mod push_check;
 pub mod rm_junction;
 pub mod sendfile;
 pub mod stage_own_edit;
@@ -20,12 +21,13 @@ pub mod stage_own_edit;
 type Check = fn(&Input) -> Vec<Finding>;
 
 /// Every built-in check, by the name a rule file uses.
-pub const ALL: [(&str, Check); 9] = [
+pub const ALL: [(&str, Check); 10] = [
     ("backslash-shrink-guard", backslash::run),
     ("rm-junction-guard", rm_junction::run),
     ("askuser-label-guard", askuser::run),
     ("sendfile-to-ysidepaney", sendfile::run),
     ("stage-own-edit-reminder", stage_own_edit::run),
+    ("push-check-reminder", push_check::run),
     ("post-push-reminder", post_push::run),
     ("head-truncation-reminder", head_trunc::run),
     ("label-guard", label::run),
