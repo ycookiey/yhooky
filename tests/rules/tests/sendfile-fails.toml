@@ -1,10 +1,19 @@
-# When posting fails, or ysidepaney is missing, SendUserFile goes on.
+# When posting fails, or ysidepaney is missing, SendUserFile goes on, unless
+# a video beside the image is shown.
 [setup]
-env = { YSIDEPANEY_BIN = "{root_win}/post.cmd" }
-files = { "post.cmd" = "@exit /b 1\r\n" }
+env = { YSIDEPANEY_BIN = "{root_win}/post.cmd", EXPLORER_BIN = "{root_win}/open.cmd" }
+files = { "post.cmd" = "@exit /b 1\r\n", "open.cmd" = "@exit /b 0\r\n", "clip.mp4" = "" }
 
 [[case]]
 name = "post-fails"
 rule = "sendfile-to-ysidepaney"
 expect = "quiet"
 input = { tool_name = "SendUserFile", cwd = "C:/work", tool_input = { files = ["a.png"] } }
+
+[[case]]
+name = "post-fails-beside-video"
+rule = "sendfile-to-ysidepaney"
+expect = "deny"
+contains = "残り(a.png)"
+excludes = "画像 1 枚"
+input = { tool_name = "SendUserFile", tool_input = { files = ["a.png", "clip.mp4"] } }

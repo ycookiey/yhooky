@@ -1,0 +1,69 @@
+# Videos are shown selected in Explorer, here by a stand-in that accepts
+# every path.
+[setup]
+env = { YSIDEPANEY_BIN = "{root_win}/post.cmd", EXPLORER_BIN = "{root_win}/open.cmd" }
+files = { "post.cmd" = "@exit /b 0\r\n", "open.cmd" = "@exit /b 0\r\n", "clip.mp4" = "", "in space/b.MOV" = "" }
+
+[[case]]
+name = "one-video"
+rule = "sendfile-to-ysidepaney"
+expect = "deny"
+contains = '動画 1 本({root_win}\clip.mp4)'
+excludes = "残り"
+input = { tool_name = "SendUserFile", tool_input = { files = ["{root_win}/clip.mp4"] } }
+
+[[case]]
+name = "git-bash-path"
+rule = "sendfile-to-ysidepaney"
+expect = "deny"
+contains = '{root_win}\clip.mp4'
+input = { tool_name = "SendUserFile", tool_input = { files = ["{root}/clip.mp4"] } }
+
+[[case]]
+name = "relative-path"
+rule = "sendfile-to-ysidepaney"
+expect = "deny"
+contains = '{root_win}\clip.mp4'
+input = { tool_name = "SendUserFile", tool_input = { files = ["clip.mp4"] } }
+
+[[case]]
+name = "space-in-folder"
+rule = "sendfile-to-ysidepaney"
+expect = "deny"
+contains = '{root_win}\in space\b.MOV'
+input = { tool_name = "SendUserFile", tool_input = { files = ["{root_win}/in space/b.MOV"] } }
+
+[[case]]
+name = "missing-video"
+rule = "sendfile-to-ysidepaney"
+expect = "quiet"
+input = { tool_name = "SendUserFile", tool_input = { files = ["{root_win}/gone.mp4"] } }
+
+[[case]]
+name = "missing-video-beside-image"
+rule = "sendfile-to-ysidepaney"
+expect = "deny"
+contains = "残り({root_win}/gone.mp4)"
+input = { tool_name = "SendUserFile", tool_input = { files = ["a.png", "{root_win}/gone.mp4"] } }
+
+[[case]]
+name = "image-video-and-other"
+rule = "sendfile-to-ysidepaney"
+expect = "deny"
+contains = "動画 1 本"
+input = { tool_name = "SendUserFile", tool_input = { files = ["a.png", "clip.mp4", "report.html"], caption = "見て" } }
+
+[[case]]
+name = "image-video-and-other-rest"
+rule = "sendfile-to-ysidepaney"
+expect = "deny"
+contains = "画像 1 枚(a.png)"
+excludes = "残り(a.png"
+input = { tool_name = "SendUserFile", tool_input = { files = ["a.png", "clip.mp4", "report.html"] } }
+
+[[case]]
+name = "image-video-and-other-left"
+rule = "sendfile-to-ysidepaney"
+expect = "deny"
+contains = "残り(report.html)"
+input = { tool_name = "SendUserFile", tool_input = { files = ["a.png", "clip.mp4", "report.html"] } }

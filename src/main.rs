@@ -3,6 +3,9 @@
 //! yhooky check                read every rule file and report the ones that cannot be used
 //! yhooky test <cases.toml>... check rules against example inputs (src/cases.rs)
 //! yhooky language-check <f>   the turns of a past transcript language-guard would block
+//! yhooky show-file <path>...  open each file's folder in Explorer with the file selected,
+//!                             minimized (src/explorer.rs; started by sendfile-to-ysidepaney,
+//!                             so the hook need not wait)
 //!
 //! As a hook it never stands in the way: when anything goes wrong (bad
 //! input, a rule file it cannot read, a panic) it prints nothing and exits
@@ -123,6 +126,17 @@ fn main() -> ExitCode {
                 println!("{line}");
             }
             ExitCode::SUCCESS
+        }
+        Some("show-file") => {
+            let shown = args[1..]
+                .iter()
+                .filter(|path| yhooky::explorer::show_selected(path))
+                .count();
+            if args.len() > 1 && shown == args.len() - 1 {
+                ExitCode::SUCCESS
+            } else {
+                ExitCode::FAILURE
+            }
         }
         Some(other) => {
             eprintln!("unknown command {other}; see the top of src/main.rs");

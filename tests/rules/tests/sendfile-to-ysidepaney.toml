@@ -21,7 +21,7 @@ input = { tool_name = "SendUserFile", cwd = "C:/work", tool_input = { files = ["
 name = "mixed"
 rule = "sendfile-to-ysidepaney"
 expect = "deny"
-contains = "画像以外(report.html)を送るなら"
+contains = "残り(report.html)を送るなら"
 input = { tool_name = "SendUserFile", cwd = "C:/work", tool_input = { files = ["a.png", "report.html"], caption = "見て" } }
 
 [[case]]
