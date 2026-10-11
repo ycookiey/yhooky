@@ -74,11 +74,23 @@ pub struct Rules {
 }
 
 impl Rules {
+    /// A folder that does not exist is skipped: a project need not have
+    /// rules. An empty path is a problem, though reading it fails the same
+    /// way, and so is any other failure.
     pub fn load(dirs: &[PathBuf]) -> Self {
         let mut rules = Rules::default();
         for dir in dirs {
-            let Ok(entries) = fs::read_dir(dir) else {
+            if dir.as_os_str().is_empty() {
+                rules.problems.push("a rule folder is an empty path".into());
                 continue;
+            }
+            let entries = match fs::read_dir(dir) {
+                Ok(entries) => entries,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(e) => {
+                    rules.problems.push(format!("{}: {e}", dir.display()));
+                    continue;
+                }
             };
             let mut files: Vec<PathBuf> = entries
                 .filter_map(|e| e.ok().map(|e| e.path()))

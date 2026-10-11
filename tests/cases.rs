@@ -246,3 +246,72 @@ fn push_check_stops_the_first_push_per_session_repo_and_head() {
         assert_eq!(check(command, "s1", &pl), want, "{name}");
     }
 }
+
+#[test]
+fn a_case_for_a_rule_not_there_fails() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join("tests")).unwrap();
+    std::fs::write(
+        dir.path().join("rules.toml"),
+        r#"[[rule]]
+id = "echo-note"
+event = "PreToolUse"
+fields = ["tool_input.command"]
+all = ['^echo']
+action = "context"
+message = "note"
+"#,
+    )
+    .unwrap();
+    let file = dir.path().join("tests").join("x.toml");
+    std::fs::write(
+        &file,
+        r#"[[case]]
+name = "known"
+rule = "echo-note"
+expect = "context"
+command = "echo hi"
+
+[[case]]
+name = "unknown"
+rule = "no-such-rule"
+expect = "quiet"
+command = "echo hi"
+"#,
+    )
+    .unwrap();
+    assert_eq!(yhooky::cases::run(&file), Ok(1));
+}
+
+#[test]
+fn a_case_file_beside_no_rules_is_a_problem() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join("tests")).unwrap();
+    let file = dir.path().join("tests").join("x.toml");
+    std::fs::write(
+        &file,
+        r#"[[case]]
+name = "quiet"
+rule = "no-such-rule"
+expect = "quiet"
+command = "echo hi"
+"#,
+    )
+    .unwrap();
+    let why = yhooky::cases::run(&file).unwrap_err();
+    assert!(why.ends_with("no rules"), "{why}");
+}
+
+#[test]
+fn a_rule_folder_that_cannot_be_read_is_a_problem_unless_missing() {
+    use std::path::PathBuf;
+    use yhooky::rules::Rules;
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("rules.toml");
+    std::fs::write(&file, "").unwrap();
+    let problems = |d: PathBuf| Rules::load(&[d]).problems.len();
+    assert_eq!(problems(dir.path().to_path_buf()), 0, "a folder");
+    assert_eq!(problems(dir.path().join("none")), 0, "a missing folder");
+    assert_eq!(problems(PathBuf::new()), 1, "an empty path");
+    assert_eq!(problems(file), 1, "a file");
+}

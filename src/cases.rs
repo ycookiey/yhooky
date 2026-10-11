@@ -2,7 +2,9 @@
 //!
 //! A case file sits in a `tests` folder beside the rule files it checks,
 //! and only the rules of that folder (the parent of `tests`) are loaded.
-//! Each case names one rule and what that rule should do with its input:
+//! Each case names one rule and what that rule should do with its input; a
+//! case naming a rule the folder does not have fails, and so does a folder
+//! with no rules at all:
 //!
 //! ```toml
 //! [setup]                 # optional
@@ -111,6 +113,9 @@ fn fill(value: Value, root: &str, root_win: &str) -> Value {
 /// Runs the cases in `file`; prints OK or NG for each and returns how many
 /// failed.
 pub fn run(file: &Path) -> Result<usize, String> {
+    // Made absolute first: the parent's parent of `tests/x.toml` is an empty
+    // path, which no folder can be read from.
+    let file = &std::path::absolute(file).map_err(|e| format!("{}: {e}", file.display()))?;
     let text = std::fs::read_to_string(file).map_err(|e| format!("{}: {e}", file.display()))?;
     let cases: CaseFile = toml::from_str(&text).map_err(|e| format!("{}: {e}", file.display()))?;
     let rules_dir = file
@@ -118,9 +123,14 @@ pub fn run(file: &Path) -> Result<usize, String> {
         .and_then(Path::parent)
         .ok_or("the case file must be in a tests folder beside the rules")?
         .to_path_buf();
-    let rules = Rules::load(&[rules_dir]);
+    let rules = Rules::load(std::slice::from_ref(&rules_dir));
     if !rules.problems.is_empty() {
         return Err(rules.problems.join("\n"));
+    }
+    // With no rules every case would come out quiet, and the quiet ones
+    // would pass without checking anything.
+    if rules.rules.is_empty() && rules.builtins.is_empty() {
+        return Err(format!("{}: no rules", rules_dir.display()));
     }
 
     let scratch = std::env::temp_dir().join(format!("yhooky-test-{}", std::process::id()));
@@ -172,6 +182,18 @@ pub fn run(file: &Path) -> Result<usize, String> {
 
     let mut failed = 0;
     for case in &cases.case {
+        // A case for a rule that is not there would always be quiet.
+        if !rules.rules.iter().any(|r| r.id == case.rule) && !rules.builtins.contains(&case.rule) {
+            failed += 1;
+            println!(
+                "NG unknown (want {}) {}: no rule {} in {}",
+                case.expect,
+                case.name,
+                case.rule,
+                rules_dir.display()
+            );
+            continue;
+        }
         let mut input = json!({
             "hook_event_name": "PreToolUse",
             "tool_name": "Bash",
