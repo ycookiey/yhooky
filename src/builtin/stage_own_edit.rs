@@ -2,10 +2,13 @@
 //!
 //! Editing a file that already has uncommitted changes (another session's
 //! or tool's) leaves no way to commit only this edit later, unless a copy
-//! was kept first with `git stage-own-edit begin <file>`. Right before
-//! editing a tracked file that differs from HEAD and has no such copy, says
-//! so; once per session and file. The copy is where git-stage-own-edit
-//! keeps it: `<git-path stage-own-edit>/<sha1 of the repo-relative path>`.
+//! was kept first with `git stage-own-edit begin <file>`. The first edit of
+//! a tracked file that differs from HEAD and has no such copy is stopped,
+//! once per session and file; the same edit sent again goes through. As a
+//! note added to the context, the reminder arrived with the edit's result,
+//! after the file had changed, and copies were not kept (2026-10-11). The
+//! copy is where git-stage-own-edit keeps it:
+//! `<git-path stage-own-edit>/<sha1 of the repo-relative path>`.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -96,17 +99,22 @@ pub fn run(input: &Input) -> Vec<Finding> {
     if mark.exists() {
         return Vec::new();
     }
-    if let Some(parent) = mark.parent() {
-        let _ = fs::create_dir_all(parent);
+    let written = mark
+        .parent()
+        .is_some_and(|parent| fs::create_dir_all(parent).is_ok())
+        && fs::write(&mark, "").is_ok();
+    if !written {
+        // Without a place to remember it, a stop would come back every time.
+        return Vec::new();
     }
-    let _ = fs::write(&mark, "");
     vec![Finding::new(
         ID,
-        Kind::Context,
+        Kind::Deny,
         format!(
-            "{rel} には HEAD からの未コミットの変更がある(他 session の作業かもしれない)。今回の編集を後で単独で commit するなら、\
-             編集前に `git stage-own-edit begin {rel}` を repo の top で実行し、commit 時に `git stage-own-edit stage {rel}` で\
-             自分の行だけを stage する(docs/git.md)。"
+            "{rel} には HEAD からの未コミットの変更がある(他 session の作業かもしれない)。この file の初回の編集なので一度止めた。\
+             今回の編集を後で単独で commit するなら、先に `git stage-own-edit begin {rel}` を repo の top で実行してから、\
+             同じ編集を出し直す(commit 時は `git stage-own-edit stage {rel}` で自分の行だけを stage する。docs/git.md)。\
+             単独で commit しないなら、そのまま出し直せば通る。"
         ),
     )]
 }

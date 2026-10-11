@@ -46,7 +46,7 @@ fn language_check_lists_the_turns() {
 }
 
 #[test]
-fn stage_own_edit_reminds_once_for_a_changed_file() {
+fn stage_own_edit_stops_the_first_edit_of_a_changed_file() {
     use std::process::Command;
     let dir = tempfile::tempdir().unwrap();
     let repo = dir.path();
@@ -94,6 +94,10 @@ fn stage_own_edit_reminds_once_for_a_changed_file() {
     let first = run(repo.join("sub/dirty.md"), "s1");
     assert_eq!(first.len(), 1, "dirty tracked file");
     assert!(first[0].message.starts_with("sub/dirty.md には"));
+    assert!(
+        matches!(first[0].kind, yhooky::output::Kind::Deny),
+        "stopped, not only noted"
+    );
     assert!(
         run(repo.join("sub/dirty.md"), "s1").is_empty(),
         "same session again"
