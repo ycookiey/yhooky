@@ -4,7 +4,11 @@
 //! or tool's) leaves no way to commit only this edit later, unless a copy
 //! was kept first with `git stage-own-edit begin <file>`. The first edit of
 //! a tracked file that differs from HEAD and has no such copy is stopped,
-//! once per session and file; the same edit sent again goes through. As a
+//! once per session and file; the same edit sent again goes through. A file
+//! this session first edits while it matches HEAD is remembered too: its
+//! later changes are this session's own, so its next edits are not stopped
+//! (2026-10-12: a second Edit of the same file in one reply was stopped by the
+//! changes the first had just made, and the stop went unnoticed). As a
 //! note added to the context, the reminder arrived with the edit's result,
 //! after the file had changed, and copies were not kept (2026-10-11). The
 //! copy is where git-stage-own-edit keeps it:
@@ -63,6 +67,20 @@ pub fn run(input: &Input) -> Vec<Finding> {
         _ => return Vec::new(),
     };
     let top = PathBuf::from(&top);
+    let hash = sha1_smol::Sha1::from(rel.as_bytes()).digest().to_string();
+    let session = match input.text("session_id") {
+        s if s.is_empty() => "none".to_string(),
+        s => s,
+    };
+    let mark = std::env::temp_dir()
+        .join("claude-stage-own-edit-reminder")
+        .join(session)
+        .join(&hash);
+    let remember = || {
+        mark.parent()
+            .is_some_and(|parent| fs::create_dir_all(parent).is_ok())
+            && fs::write(&mark, "").is_ok()
+    };
     let unchanged = Command::new("git")
         .arg("-C")
         .arg(&top)
@@ -73,9 +91,10 @@ pub fn run(input: &Input) -> Vec<Finding> {
         .status()
         .is_ok_and(|s| s.success());
     if unchanged {
+        // This session's edit is the first change: later ones are its own.
+        let _ = remember();
         return Vec::new();
     }
-    let hash = sha1_smol::Sha1::from(rel.as_bytes()).digest().to_string();
     let Some(store) = git(&top, &["rev-parse", "--git-path", "stage-own-edit"]) else {
         return Vec::new();
     };
@@ -88,22 +107,10 @@ pub fn run(input: &Input) -> Vec<Finding> {
     if store.join(&hash).exists() {
         return Vec::new();
     }
-    let session = match input.text("session_id") {
-        s if s.is_empty() => "none".to_string(),
-        s => s,
-    };
-    let mark = std::env::temp_dir()
-        .join("claude-stage-own-edit-reminder")
-        .join(session)
-        .join(&hash);
     if mark.exists() {
         return Vec::new();
     }
-    let written = mark
-        .parent()
-        .is_some_and(|parent| fs::create_dir_all(parent).is_ok())
-        && fs::write(&mark, "").is_ok();
-    if !written {
+    if !remember() {
         // Without a place to remember it, a stop would come back every time.
         return Vec::new();
     }

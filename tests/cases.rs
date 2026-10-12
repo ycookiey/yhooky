@@ -111,6 +111,17 @@ fn stage_own_edit_stops_the_first_edit_of_a_changed_file() {
         run(repo.join("clean.md"), "s1").is_empty(),
         "clean tracked file"
     );
+    // s1's edit changes clean.md: its next edit is its own second edit.
+    std::fs::write(repo.join("clean.md"), "two\n").unwrap();
+    assert!(
+        run(repo.join("clean.md"), "s1").is_empty(),
+        "a file this session changed itself"
+    );
+    assert_eq!(
+        run(repo.join("clean.md"), "s3").len(),
+        1,
+        "the same file for a session that never saw it clean"
+    );
     assert!(
         run(repo.join("untracked.md"), "s1").is_empty(),
         "untracked file"

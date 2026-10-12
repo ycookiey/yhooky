@@ -78,3 +78,27 @@ name = "single-quote-in-double"
 rule = "backslash-shrink-guard"
 expect = "quiet"
 command = '''echo "it's \"ok\""'''
+
+[[case]]
+name = "double-quote-before-dollar"
+rule = "backslash-shrink-guard"
+expect = "deny"
+command = '''reg query "HKLM\\$k\\{x}"'''
+
+[[case]]
+name = "double-quote-before-backtick"
+rule = "backslash-shrink-guard"
+expect = "deny"
+command = '''echo "a\\`date`"'''
+
+[[case]]
+name = "double-quote-before-closing-quote"
+rule = "backslash-shrink-guard"
+expect = "deny"
+command = '''echo "C:\\" next'''
+
+[[case]]
+name = "double-quote-before-brace"
+rule = "backslash-shrink-guard"
+expect = "context"
+command = '''echo "C:\\{x}"'''

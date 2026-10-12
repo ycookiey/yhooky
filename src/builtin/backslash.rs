@@ -6,9 +6,13 @@
 //! - a heredoc body (a Python script's "\\n" became a real newline), and
 //! - single quotes and $'...'.
 //!
-//! Those are refused, pointing to the Write tool. In double quotes or
-//! outside quotes bash often gives the same result either way, so there it
-//! only reminds.
+//! - double quotes, where the `\\` comes right before `$`, `` ` `` or `"`:
+//!   the shrunk `\` escapes that character (`"HKLM\\$k"` stopped expanding
+//!   `$k`, 2026-10-12).
+//!
+//! Those are refused, pointing to single quotes or the Write tool. Elsewhere
+//! in double quotes, or outside quotes, bash often gives the same result
+//! either way, so there it only reminds.
 
 use crate::input::Input;
 use crate::output::{Finding, Kind};
@@ -99,10 +103,13 @@ fn split_heredocs(command: &str) -> (String, Vec<String>) {
 #[derive(PartialEq)]
 enum Place {
     Single,
+    /// In double quotes, right before `$`, `` ` `` or `"`.
+    DoubleSpecial,
     Other,
 }
 
-/// Where each `\\` sits: in single quotes or $'...', or elsewhere.
+/// Where each `\\` sits: in single quotes or $'...', in double quotes before
+/// a character a backslash escapes there, or elsewhere.
 fn places(text: &str) -> Vec<Place> {
     #[derive(PartialEq)]
     enum State {
@@ -145,7 +152,14 @@ fn places(text: &str) -> Vec<Place> {
             }
             State::Double => {
                 if pair {
-                    found.push(Place::Other);
+                    let escapes = chars
+                        .get(i + 2)
+                        .is_some_and(|n| matches!(n, '$' | '`' | '"'));
+                    found.push(if escapes {
+                        Place::DoubleSpecial
+                    } else {
+                        Place::Other
+                    });
                     i += 2;
                     continue;
                 }
@@ -197,8 +211,12 @@ pub fn run(input: &Input) -> Vec<Finding> {
     if bodies.iter().any(|b| b.contains("\\\\")) {
         where_.push("heredoc の本文");
     }
-    if places(&rest).contains(&Place::Single) {
+    let places = places(&rest);
+    if places.contains(&Place::Single) {
         where_.push("単一引用('…'・$'…')の中");
+    }
+    if places.contains(&Place::DoubleSpecial) {
+        where_.push("二重引用の中で `$`・`` ` ``・`\"` の直前(縮んだ `\\` がその文字を打ち消す。`\"…\\\\$k\"` の `$k` が展開されない)");
     }
     let finding = if where_.is_empty() {
         Finding::new(
@@ -213,8 +231,8 @@ pub fn run(input: &Input) -> Vec<Finding> {
             Kind::Deny,
             format!(
                 "Bash ツールは実行の前に `\\\\` を `\\` 1 本に縮める(~/.claude/docs/bash.md)。{}の `\\\\` は、\
-                 書いたとおりには渡らない。中身を Write ツールでファイルに書いてから、そのファイルを実行する・読ませる\
-                 (スクリプトはファイルにして python <file>、データはファイルで渡す)。",
+                 書いたとおりには渡らない。単一引用で書けるなら単一引用にする。でなければ、中身を Write ツールでファイルに書いてから、\
+                 そのファイルを実行する・読ませる(スクリプトはファイルにして python <file>、データはファイルで渡す)。",
                 where_.join("・")
             ),
         )
