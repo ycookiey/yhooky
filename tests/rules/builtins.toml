@@ -10,4 +10,5 @@ builtins = [
   "head-truncation-reminder",
   "label-guard",
   "language-guard",
+  "wago-verb-reminder",
 ]

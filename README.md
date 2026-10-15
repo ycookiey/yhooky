@@ -18,6 +18,15 @@ cd yhooky
 cargo install --path .
 ```
 
+組み込みの判定 `wago-verb-reminder` は辞書(UniDic から作る約 120 MB のフォルダ)を使う。実行ファイルの隣の `unidic` フォルダか、環境変数 `YHOOKY_UNIDIC_DIR` の指すフォルダに置く。無ければこの判定は何もしない。作り方:
+
+```sh
+# unidic-mecab-2.1.2 を展開したフォルダから作る。context_id_freq.txt は lindera-unidic の crate にある(省略可)
+cargo run --release --example build_unidic -- <unidic-mecab-2.1.2> <出力先>/unidic [context_id_freq.txt]
+```
+
+辞書は UniDic(© The UniDic Consortium)を BSD ライセンスで使い、許諾文を辞書のフォルダの `UNIDIC-BSD` に置く。
+
 ## 登録
 
 `settings.json` の hooks に、出来事ごとに 1 つ登録する。`args` を付けると shell を通さずに起動する。
@@ -86,6 +95,7 @@ message = '''push の前に CI と同じ確認を回したか。'''
 | `label-guard` | Stop | ギリシャ文字・ローマ数字の見出しを止める |
 | `language-guard` | Stop | 最後の返答が英語主体なら止める |
 | `turn-state` | Stop・PostToolUse (Monitor) | ターンの終わりに、まだ動いている裏の処理を `<session>.stop.json` に書く(下の「turn-state」)。何も返さない |
+| `wago-verb-reminder` | PreToolUse (ブラウザへの入力・メッセージの送信、Write・Edit) | 外に出る日本語の文の、熟語でない動詞(語種が和語の動詞)を並べて知らせる。補助的な語(為る・有る・居る・置く・因る)は除く。Write・Edit は公開 repo の README と HTML だけ(公開かは `gh api` で調べ、1 日覚える。調べられなければ公開とみなす)。辞書は上の「Install」 |
 
 ### turn-state
 
