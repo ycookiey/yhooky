@@ -17,8 +17,17 @@
 //! that far: from `$YHOOKY_UNIDIC_DIR`, else the `unidic` folder beside the
 //! executable (built by examples/build_unidic.rs). Without it nothing is
 //! said.
+//!
+//! A note reaches Claude with the tool's result, after a message has gone
+//! out, so the tools that may send (a message, a click or a key in a page,
+//! a script run in it) are stopped once per session and text instead; the
+//! same call sent again goes through. Which were stopped is kept as empty
+//! files in `$WAGO_GUARD_STATE_DIR`, else `<temp>/claude-wago-verb`. Typing
+//! into a field (form_input) and writing a file can still be revised, so
+//! there it only notes.
 
 use std::borrow::Cow;
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
@@ -30,18 +39,20 @@ use crate::text::windows_path;
 
 const ID: &str = "wago-verb-reminder";
 
-// TODO: a note reaches Claude with the tool's result, after a message has
-// been sent; whether sending tools are stopped once instead (as
-// push-check-reminder does) is being decided with the rule's owner.
-static SENDING_TOOL: LazyLock<Regex> = LazyLock::new(|| {
+/// Tools that put text into a page or a message.
+static TYPING_TOOL: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^(mcp__claude-in-chrome__(form_input|computer|javascript_tool)|mcp__beeper__send_message)$")
         .unwrap()
 });
-const SENDING_FIELDS: [&str; 2] = ["tool_input.value", "tool_input.text"];
+/// Of those, the ones that may send what they type.
+static SENDING_TOOL: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"^(mcp__claude-in-chrome__(computer|javascript_tool)|mcp__beeper__send_message)$")
+        .unwrap()
+});
+const TYPING_FIELDS: [&str; 2] = ["tool_input.value", "tool_input.text"];
 
-// TODO: the lexemes 成る・出来る・言う (という) are being decided with the
-// rule's owner; until then they are counted.
 /// Lexemes left out: helpers that grammar asks for, not word choices.
+/// 成る・出来る・言う are counted.
 const HELPERS: [&str; 5] = ["為る", "有る", "居る", "置く", "因る"];
 
 /// At most this many words are listed.
@@ -150,8 +161,8 @@ fn analyze(text: &str) -> Option<Vec<String>> {
 /// The text to look at, if this call writes Japanese for other people.
 fn outgoing_text(input: &Input) -> Option<String> {
     let tool = input.tool();
-    if SENDING_TOOL.is_match(&tool) {
-        let fields: Vec<String> = SENDING_FIELDS.iter().map(|f| f.to_string()).collect();
+    if TYPING_TOOL.is_match(&tool) {
+        let fields: Vec<String> = TYPING_FIELDS.iter().map(|f| f.to_string()).collect();
         return Some(input.first_text(&fields));
     }
     if tool != "Write" && tool != "Edit" {
@@ -198,15 +209,42 @@ pub fn run(input: &Input) -> Vec<Finding> {
     } else {
         String::new()
     };
-    vec![Finding::new(
-        ID,
-        Kind::Context,
-        format!(
-            "外に出る日本語の文に、熟語でない動詞(和語)がある: {}{rest}。熟語で言うほうが通るかを考え直す。置き換えは任意。\
-             規則1(具体的な語を選ぶ)とは別の軸(~/.claude/docs/external-japanese.md の規則19)。",
-            words.join("・")
-        ),
-    )]
+    let note = format!(
+        "外に出る日本語の文に、熟語でない動詞(和語)がある: {}{rest}。熟語で言うほうが通るかを考え直す。置き換えは任意。\
+         規則1(具体的な語を選ぶ)とは別の軸(~/.claude/docs/external-japanese.md の規則19)。",
+        words.join("・")
+    );
+    let stop = SENDING_TOOL.is_match(&input.tool()) && first_time(&input.text("session_id"), &text);
+    let finding = if stop {
+        Finding::new(
+            ID,
+            Kind::Deny,
+            format!(
+                "{note}送ると取り消せないので、送る前に一度止めた。このまま送るなら、同じ操作を出し直せば通る。"
+            ),
+        )
+    } else {
+        Finding::new(ID, Kind::Context, note)
+    };
+    vec![finding]
+}
+
+fn state_dir() -> PathBuf {
+    match std::env::var("WAGO_GUARD_STATE_DIR") {
+        Ok(dir) if !dir.is_empty() => PathBuf::from(windows_path(&dir)),
+        _ => std::env::temp_dir().join("claude-wago-verb"),
+    }
+}
+
+/// Whether this session sends `text` for the first time; remembers it.
+/// Without a place to remember it, a stop would come back every time, so
+/// that counts as seen.
+fn first_time(session: &str, text: &str) -> bool {
+    let key = format!("{session}\n{text}");
+    let hash = sha1_smol::Sha1::from(key.as_bytes()).digest().to_string();
+    let state = state_dir();
+    let mark = state.join(&hash[..16]);
+    !mark.exists() && fs::create_dir_all(&state).is_ok() && fs::write(&mark, "").is_ok()
 }
 
 #[cfg(test)]
@@ -268,6 +306,65 @@ mod tests {
         ] {
             assert!(!for_people(path), "{path}");
         }
+    }
+
+    #[test]
+    fn tells_sending_tools_apart() {
+        for tool in [
+            "mcp__beeper__send_message",
+            "mcp__claude-in-chrome__computer",
+            "mcp__claude-in-chrome__javascript_tool",
+        ] {
+            assert!(
+                TYPING_TOOL.is_match(tool) && SENDING_TOOL.is_match(tool),
+                "{tool}"
+            );
+        }
+        assert!(TYPING_TOOL.is_match("mcp__claude-in-chrome__form_input"));
+        assert!(!SENDING_TOOL.is_match("mcp__claude-in-chrome__form_input"));
+        assert!(!TYPING_TOOL.is_match("mcp__claude-in-chrome__navigate"));
+    }
+
+    /// Runs only with a dictionary, as below.
+    #[test]
+    fn stops_a_send_once() {
+        if std::env::var("YHOOKY_UNIDIC_DIR").is_err() || dictionary_dir().is_none() {
+            eprintln!("skipped: set YHOOKY_UNIDIC_DIR to run");
+            return;
+        }
+        let dir = tempfile::tempdir().unwrap();
+        // SAFETY: only this test reads the variable.
+        unsafe { std::env::set_var("WAGO_GUARD_STATE_DIR", dir.path()) };
+        let call = |tool: &str| {
+            let raw = serde_json::json!({
+                "hook_event_name": "PreToolUse",
+                "tool_name": tool,
+                "session_id": "s",
+                "tool_input": { "text": "結果を確かめる。", "value": "結果を確かめる。" },
+            });
+            run(&Input::parse(&raw.to_string()).unwrap())
+        };
+        let kinds = |found: Vec<Finding>| {
+            found
+                .iter()
+                .map(|f| matches!(f.kind, Kind::Deny))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            kinds(call("mcp__beeper__send_message")),
+            vec![true],
+            "first send"
+        );
+        assert_eq!(
+            kinds(call("mcp__beeper__send_message")),
+            vec![false],
+            "sent again"
+        );
+        assert_eq!(
+            kinds(call("mcp__claude-in-chrome__form_input")),
+            vec![false],
+            "typing only"
+        );
     }
 
     /// Runs only with a dictionary: YHOOKY_UNIDIC_DIR=<dir built by
