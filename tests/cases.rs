@@ -65,19 +65,23 @@ fn stage_own_edit_stops_the_first_edit_of_a_changed_file() {
     git(&["config", "user.email", "t@example.com"]);
     git(&["config", "user.name", "t"]);
     std::fs::create_dir_all(repo.join("sub")).unwrap();
-    for file in ["sub/dirty.md", "clean.md", "begun.md"] {
+    for file in ["sub/dirty.md", "clean.md", "begun.md", "stale.md"] {
         std::fs::write(repo.join(file), "one\n").unwrap();
     }
-    git(&["add", "sub/dirty.md", "clean.md", "begun.md"]);
+    git(&["add", "sub/dirty.md", "clean.md", "begun.md", "stale.md"]);
     git(&["commit", "-q", "-m", "x"]);
     std::fs::write(repo.join("sub/dirty.md"), "two\n").unwrap();
     std::fs::write(repo.join("begun.md"), "two\n").unwrap();
+    std::fs::write(repo.join("stale.md"), "two\n").unwrap();
     std::fs::write(repo.join("untracked.md"), "one\n").unwrap();
-    // A copy kept by `git stage-own-edit begin begun.md`.
     let store = repo.join(".git").join("stage-own-edit");
     std::fs::create_dir_all(&store).unwrap();
-    let hash = sha1_smol::Sha1::from("begun.md").digest().to_string();
-    std::fs::write(store.join(hash), "one\n").unwrap();
+    let copy = |path: &str| store.join(sha1_smol::Sha1::from(path).digest().to_string());
+    // A copy kept by `git stage-own-edit begin begun.md` just now.
+    std::fs::write(copy("begun.md"), "two\n").unwrap();
+    // A copy left by an earlier `begin` whose `stage` never ran, from
+    // before the changes now in the file.
+    std::fs::write(copy("stale.md"), "one\n").unwrap();
     let outside = tempfile::tempdir().unwrap();
     std::fs::write(outside.path().join("tmp"), "x").unwrap();
 
@@ -130,6 +134,27 @@ fn stage_own_edit_stops_the_first_edit_of_a_changed_file() {
     assert!(
         run(repo.join("begun.md"), "s1").is_empty(),
         "copy already kept"
+    );
+    // s1's edit changes begun.md away from the copy.
+    std::fs::write(repo.join("begun.md"), "three\n").unwrap();
+    assert!(
+        run(repo.join("begun.md"), "s1").is_empty(),
+        "the next edit after the one the copy let through"
+    );
+    let other = run(repo.join("begun.md"), "s2");
+    assert_eq!(other.len(), 1, "another session after the begun edit");
+    let stale = run(repo.join("stale.md"), "s1");
+    assert_eq!(stale.len(), 1, "a copy that no longer matches the file");
+    assert!(
+        stale[0]
+            .message
+            .contains("store にある写しは今の file と違う"),
+        "says the copy is stale: {}",
+        stale[0].message
+    );
+    assert!(
+        run(repo.join("stale.md"), "s1").is_empty(),
+        "same session again after the stop"
     );
     assert!(
         run(outside.path().join("tmp"), "s1").is_empty(),
