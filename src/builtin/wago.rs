@@ -27,7 +27,6 @@
 //! there it only notes.
 
 use std::borrow::Cow;
-use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
@@ -229,22 +228,10 @@ pub fn run(input: &Input) -> Vec<Finding> {
     vec![finding]
 }
 
-fn state_dir() -> PathBuf {
-    match std::env::var("WAGO_GUARD_STATE_DIR") {
-        Ok(dir) if !dir.is_empty() => PathBuf::from(windows_path(&dir)),
-        _ => std::env::temp_dir().join("claude-wago-verb"),
-    }
-}
-
 /// Whether this session sends `text` for the first time; remembers it.
-/// Without a place to remember it, a stop would come back every time, so
-/// that counts as seen.
 fn first_time(session: &str, text: &str) -> bool {
-    let key = format!("{session}\n{text}");
-    let hash = sha1_smol::Sha1::from(key.as_bytes()).digest().to_string();
-    let state = state_dir();
-    let mark = state.join(&hash[..16]);
-    !mark.exists() && fs::create_dir_all(&state).is_ok() && fs::write(&mark, "").is_ok()
+    let dir = crate::once::state_dir("WAGO_GUARD_STATE_DIR", "claude-wago-verb");
+    crate::once::first_time(&dir, &format!("{session}\n{text}"))
 }
 
 #[cfg(test)]

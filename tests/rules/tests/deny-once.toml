@@ -1,0 +1,35 @@
+# deny-once stops the first call per session and text, and notes after.
+[setup]
+env = { RULE_ONCE_STATE_DIR = "{root}/rule-once" }
+
+[[case]]
+name = "first"
+rule = "sample-deny-once"
+expect = "deny"
+contains = "一度だけ止めた"
+input = { tool_name = "mcp__beeper__send_message", session_id = "s1", tool_input = { text = "これを送る" } }
+
+[[case]]
+name = "sent-again"
+rule = "sample-deny-once"
+expect = "context"
+excludes = "一度だけ止めた"
+input = { tool_name = "mcp__beeper__send_message", session_id = "s1", tool_input = { text = "これを送る" } }
+
+[[case]]
+name = "other-text"
+rule = "sample-deny-once"
+expect = "deny"
+input = { tool_name = "mcp__beeper__send_message", session_id = "s1", tool_input = { text = "あれを送る" } }
+
+[[case]]
+name = "other-session"
+rule = "sample-deny-once"
+expect = "deny"
+input = { tool_name = "mcp__beeper__send_message", session_id = "s2", tool_input = { text = "これを送る" } }
+
+[[case]]
+name = "no-match"
+rule = "sample-deny-once"
+expect = "quiet"
+input = { tool_name = "mcp__beeper__send_message", session_id = "s1", tool_input = { text = "これを読む" } }

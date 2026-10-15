@@ -59,7 +59,7 @@ tools = '^Bash$'                     # ツール名が当たるべき正規表�
 fields = ["tool_input.command"]      # 読む項目(. 区切り)。最初の空でないもの
 all = ['(^|\s)git\s+push(\s|$)']     # どれも、どこかの行に当たる
 none = ['--dry-run']                 # どれも、どの行にも当たらない
-action = "context"                   # context(文を差し込む)・deny(止める)・block(Stop で止める)
+action = "context"                   # context(文を差し込む)・deny(止める)・deny-once(session と照合した文ごとに一度だけ止め、出し直せば文を差し込むだけ)・block(Stop で止める)
 message = '''push の前に CI と同じ確認を回したか。'''
 ```
 

@@ -14,6 +14,7 @@ pub mod builtin;
 pub mod cases;
 pub mod explorer;
 pub mod input;
+pub mod once;
 pub mod output;
 pub mod public_repo;
 pub mod repo;

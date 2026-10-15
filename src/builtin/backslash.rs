@@ -20,15 +20,13 @@
 //! commands were stopped is kept as empty files in
 //! `$BACKSLASH_GUARD_STATE_DIR`, else `<temp>/claude-backslash-guard`.
 
-use std::fs;
-use std::path::PathBuf;
 use std::sync::LazyLock;
 
 use regex::Regex;
 
 use crate::input::Input;
+use crate::once;
 use crate::output::{Finding, Kind};
-use crate::text::windows_path;
 
 const ID: &str = "backslash-shrink-guard";
 
@@ -42,22 +40,10 @@ static INLINE_SCRIPT: LazyLock<Regex> = LazyLock::new(|| {
     .unwrap()
 });
 
-fn state_dir() -> PathBuf {
-    match std::env::var("BACKSLASH_GUARD_STATE_DIR") {
-        Ok(dir) if !dir.is_empty() => PathBuf::from(windows_path(&dir)),
-        _ => std::env::temp_dir().join("claude-backslash-guard"),
-    }
-}
-
 /// Whether this session sends `command` for the first time; remembers it.
-/// Without a place to remember it, a stop would come back every time, so
-/// that counts as seen.
 fn first_time(session: &str, command: &str) -> bool {
-    let key = format!("{session}\n{command}");
-    let hash = sha1_smol::Sha1::from(key.as_bytes()).digest().to_string();
-    let state = state_dir();
-    let mark = state.join(&hash[..16]);
-    !mark.exists() && fs::create_dir_all(&state).is_ok() && fs::write(&mark, "").is_ok()
+    let dir = once::state_dir("BACKSLASH_GUARD_STATE_DIR", "claude-backslash-guard");
+    once::first_time(&dir, &format!("{session}\n{command}"))
 }
 
 /// The heredocs a line opens: (strip leading tabs, end word), as the
