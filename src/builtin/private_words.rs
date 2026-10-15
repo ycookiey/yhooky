@@ -21,12 +21,12 @@ use std::process::{Command, Stdio};
 
 use serde::Deserialize;
 
-use super::post_push::GIT_PUSH;
+use super::post_push::runs_git_push;
 use crate::input::Input;
 use crate::output::{Finding, Kind};
 use crate::public_repo::{git_config, github_repo, origin_url};
 use crate::repo;
-use crate::text::{any_line, windows_path};
+use crate::text::windows_path;
 
 const ID: &str = "private-word-guard";
 const LIMIT: usize = 20;
@@ -127,7 +127,7 @@ pub fn run(input: &Input) -> Vec<Finding> {
         return Vec::new();
     }
     let command = input.command();
-    if !any_line(&GIT_PUSH, &command) || command.contains("PRIVATE_WORDS_OK=1") {
+    if !runs_git_push(&command) || command.contains("PRIVATE_WORDS_OK=1") {
         return Vec::new();
     }
     let Some(list) = list_file()

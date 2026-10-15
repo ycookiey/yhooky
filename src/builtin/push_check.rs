@@ -19,10 +19,10 @@ use std::sync::LazyLock;
 
 use regex::Regex;
 
-use super::post_push::GIT_PUSH;
+use super::post_push::runs_git_push;
 use crate::input::Input;
 use crate::output::{Finding, Kind};
-use crate::text::{any_line, matches, strip_quote, windows_path};
+use crate::text::{matches, strip_quote, windows_path};
 
 const ID: &str = "push-check-reminder";
 
@@ -77,7 +77,7 @@ pub fn run(input: &Input) -> Vec<Finding> {
         return Vec::new();
     }
     let command = input.command();
-    if !any_line(&GIT_PUSH, &command) {
+    if !runs_git_push(&command) {
         return Vec::new();
     }
     let cwd = input.cwd();
