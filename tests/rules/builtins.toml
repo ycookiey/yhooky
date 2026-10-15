@@ -12,4 +12,5 @@ builtins = [
   "language-guard",
   "wago-verb-reminder",
   "private-word-guard",
+  "heredoc-size-guard",
 ]

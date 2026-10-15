@@ -96,7 +96,7 @@ fn heredocs(line: &str) -> Vec<(bool, String)> {
 }
 
 /// The command without heredoc bodies, and the bodies.
-fn split_heredocs(command: &str) -> (String, Vec<String>) {
+pub(crate) fn split_heredocs(command: &str) -> (String, Vec<String>) {
     let lines: Vec<&str> = command.split('\n').collect();
     let mut kept = Vec::new();
     let mut bodies = Vec::new();
