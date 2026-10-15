@@ -386,8 +386,11 @@ fn private_word_guard_stops_a_push_with_listed_words() {
     git(&["commit", "-q", "-m", "clean"]);
 
     let list = dir.path().join("words.toml");
-    // SAFETY: only this test reads the variable.
-    unsafe { std::env::set_var("PRIVATE_WORDS_FILE", &list) };
+    // SAFETY: only this test reads the variables.
+    unsafe {
+        std::env::set_var("PRIVATE_WORDS_FILE", &list);
+        std::env::set_var("PRIVATE_WORDS_STATE_DIR", dir.path().join("state"));
+    }
     let push = |command: &str| {
         let raw = serde_json::json!({
             "hook_event_name": "PreToolUse",
@@ -412,11 +415,15 @@ fn private_word_guard_stops_a_push_with_listed_words() {
         found[0].message
     );
     assert!(found[0].message.contains("「hidden-word」"));
-    assert!(
-        push("PRIVATE_WORDS_OK=1 git push").is_empty(),
-        "let through on purpose"
-    );
+    assert!(push("git push").is_empty(), "the same push sent again");
     assert!(push("git status").is_empty(), "not a push");
+    std::fs::write(
+        repo.join("new.md"),
+        "clean\nnew hidden-word\nmore hidden-word\n",
+    )
+    .unwrap();
+    git(&["commit", "-q", "-am", "more"]);
+    assert_eq!(push("git push").len(), 1, "a new place found");
 
     git(&[
         "remote",

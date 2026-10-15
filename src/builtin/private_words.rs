@@ -1,10 +1,10 @@
 //! private-word-guard (PreToolUse, Bash).
 //!
-//! Before a `git push`, looks for personal words in what has not reached
-//! any remote yet (`HEAD --not --remotes`): the lines the commits add and
-//! their messages. Private repositories count too, as they may be made
-//! public later; repositories meant for personal use from the start are
-//! listed to skip. The list lives outside every repository:
+//! Before a `git push`, looks for words that may tell about the person in
+//! what has not reached any remote yet (`HEAD --not --remotes`): the lines
+//! the commits add and their messages. Private repositories count too, as
+//! they may be made public later; repositories meant for personal use from
+//! the start are listed to skip. The list lives outside every repository:
 //! `$PRIVATE_WORDS_FILE`, else `~/.claude/private-words.toml`:
 //!
 //! ```toml
@@ -12,8 +12,11 @@
 //! skip_repos = ["owner/repo"]        # GitHub owner/repo of origin, or its URL
 //! ```
 //!
-//! Without the file nothing is checked. A push that holds a word is refused
-//! every time; `PRIVATE_WORDS_OK=1` in the command lets it through.
+//! The words are candidates to think over, not a ban, so the list can be
+//! broad: a push that holds them is stopped once per session, repository
+//! and set of places found; the same push sent again goes through. Which
+//! were stopped is kept as empty files in `$PRIVATE_WORDS_STATE_DIR`, else
+//! `<temp>/claude-private-words`. Without the list nothing is checked.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -136,7 +139,7 @@ pub fn run(input: &Input) -> Vec<Finding> {
         return Vec::new();
     }
     let command = input.command();
-    if !runs_git_push(&command) || command.contains("PRIVATE_WORDS_OK=1") {
+    if !runs_git_push(&command) {
         return Vec::new();
     }
     let Some(list) = list_file()
@@ -194,12 +197,16 @@ pub fn run(input: &Input) -> Vec<Finding> {
     if hits.is_empty() {
         return Vec::new();
     }
-    let shown: Vec<String> = hits
+    let all: Vec<String> = hits
         .iter()
-        .take(LIMIT)
         .map(|h| format!("「{}」 {} {}", h.word, h.commit, h.place))
         .collect();
-    let more = hits.len().saturating_sub(LIMIT);
+    let state = crate::once::state_dir("PRIVATE_WORDS_STATE_DIR", "claude-private-words");
+    let session = input.text("session_id");
+    if !crate::once::first_time(&state, &format!("{session}\n{dir}\n{}", all.join("\n"))) {
+        return Vec::new();
+    }
+    let more = all.len().saturating_sub(LIMIT);
     let rest = if more > 0 {
         format!(" ほか {more} 件")
     } else {
@@ -209,10 +216,10 @@ pub fn run(input: &Input) -> Vec<Finding> {
         ID,
         Kind::Deny,
         format!(
-            "push する commit に、個人の情報として登録した語がある(~/.claude/private-words.toml): {}{rest}。\
-             公開されうる repo には出さない。未 push の commit から消してから push する(docs/git.md の「push 前に消す」)。\
-             意図して出すなら、コマンドの先頭に PRIVATE_WORDS_OK=1 を付けて出し直す。",
-            shown.join("、")
+            "push する commit に、個人を推測させうる語の候補(~/.claude/private-words.toml)がある: {}{rest}。\
+             一度止めた。公開されうる repo に出してよいかを考え直す。出さないなら未 push の commit から消す\
+             (docs/git.md の「push 前に消す」)。問題なければ、同じ push を出し直せば通る。",
+            all[..all.len().min(LIMIT)].join("、")
         ),
     )]
 }
