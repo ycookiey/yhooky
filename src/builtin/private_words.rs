@@ -55,6 +55,21 @@ pub struct Hit {
     pub place: String,
 }
 
+/// Whether `word` occurs in `text`. An end of the word that is an ASCII
+/// letter or digit must not run on into another one, so a short ASCII word
+/// is not found inside a longer one (a user name inside an account name).
+pub fn contains_word(text: &str, word: &str) -> bool {
+    let alnum = |c: Option<char>| c.is_some_and(|c| c.is_ascii_alphanumeric());
+    let (first, last) = (word.chars().next(), word.chars().last());
+    text.match_indices(word).any(|(at, _)| {
+        let before = text[..at].chars().next_back();
+        let after = text[at + word.len()..].chars().next();
+        let runs_on_before = alnum(first) && alnum(before);
+        let runs_on_after = alnum(last) && alnum(after);
+        !runs_on_before && !runs_on_after
+    })
+}
+
 /// The words in `git log -p --format=COMMIT%x00%h%x00%B` output: in added
 /// lines and in messages.
 pub fn find(log: &str, words: &[String]) -> Vec<Hit> {
@@ -67,7 +82,7 @@ pub fn find(log: &str, words: &[String]) -> Vec<Hit> {
     let look = |text: &str, commit: &str, place: String, hits: &mut Vec<Hit>| {
         let text = text.to_lowercase();
         for (word, low) in words.iter().zip(&lowered) {
-            if !low.is_empty() && text.contains(low.as_str()) {
+            if !low.is_empty() && contains_word(&text, low) {
                 hits.push(Hit {
                     word: word.clone(),
                     commit: commit.to_string(),
@@ -106,20 +121,14 @@ pub fn find(log: &str, words: &[String]) -> Vec<Hit> {
     hits
 }
 
-/// Whether the repository at `dir` is listed to skip.
-fn skipped(dir: &Path, skip: &[String]) -> bool {
-    if skip.is_empty() {
-        return false;
-    }
-    let Some(url) = git_config(dir)
+/// The `origin` URL of the repository at `dir`, and its GitHub `owner/repo`
+/// in lower case ("" elsewhere).
+fn origin(dir: &Path) -> Option<(String, String)> {
+    let url = git_config(dir)
         .and_then(|c| fs::read_to_string(c).ok())
-        .and_then(|c| origin_url(&c))
-    else {
-        return false;
-    };
+        .and_then(|c| origin_url(&c))?;
     let name = github_repo(&url).unwrap_or_default().to_lowercase();
-    skip.iter()
-        .any(|s| s.eq_ignore_ascii_case(&url) || (!name.is_empty() && s.to_lowercase() == name))
+    Some((url, name))
 }
 
 pub fn run(input: &Input) -> Vec<Finding> {
@@ -144,9 +153,21 @@ pub fn run(input: &Input) -> Vec<Finding> {
         return Vec::new();
     }
     let dir = windows_path(&repo::dir(input, repo::First::GitC));
-    if skipped(Path::new(&dir), &list.skip_repos) {
+    let (url, name) = origin(Path::new(&dir)).unwrap_or_default();
+    let listed = |s: &String| {
+        (!url.is_empty() && s.eq_ignore_ascii_case(&url))
+            || (!name.is_empty() && s.to_lowercase() == name)
+    };
+    if list.skip_repos.iter().any(listed) {
         return Vec::new();
     }
+    // A private repository's own name is listed, yet is no secret inside it.
+    let own = name.rsplit('/').next().unwrap_or_default();
+    let words: Vec<String> = list
+        .words
+        .into_iter()
+        .filter(|w| own.is_empty() || !w.eq_ignore_ascii_case(own))
+        .collect();
     let Ok(out) = Command::new("git")
         .args([
             "-C",
@@ -169,7 +190,7 @@ pub fn run(input: &Input) -> Vec<Finding> {
     if !out.status.success() {
         return Vec::new();
     }
-    let hits = find(&String::from_utf8_lossy(&out.stdout), &list.words);
+    let hits = find(&String::from_utf8_lossy(&out.stdout), &words);
     if hits.is_empty() {
         return Vec::new();
     }
@@ -199,6 +220,19 @@ pub fn run(input: &Input) -> Vec<Finding> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn keeps_ascii_words_whole() {
+        assert!(contains_word("path c:/users/ab/x", "ab"));
+        assert!(!contains_word("github.com/abcd/repo", "ab"));
+        assert!(!contains_word("concatenate", "cat"));
+        assert!(contains_word("the cat漢字", "cat"));
+        assert!(contains_word("a-b_c cat.", "cat"));
+        assert!(contains_word("秘密語を含む", "秘密語"));
+        assert!(contains_word("x秘密語y", "秘密語"));
+        assert!(contains_word("my-repo-name here", "my-repo"));
+        assert!(!contains_word("my-repository", "my-repo"));
+    }
 
     #[test]
     fn finds_words_in_lines_and_messages() {

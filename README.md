@@ -96,7 +96,7 @@ message = '''push の前に CI と同じ確認を回したか。'''
 | `label-guard` | Stop | ギリシャ文字・ローマ数字の見出しを止める |
 | `language-guard` | Stop | 最後の返答が英語主体なら止める |
 | `turn-state` | Stop・PostToolUse (Monitor) | ターンの終わりに、まだ動いている裏の処理を `<session>.stop.json` に書く(下の「turn-state」)。何も返さない |
-| `wago-verb-reminder` | PreToolUse (ブラウザへの入力・メッセージの送信、Write・Edit) | 外に出る日本語の文の、熟語でない動詞(語種が和語の動詞)を並べて知らせる。補助的な語(為る・有る・居る・置く・因る)は除く。送りうる操作(メッセージの送信、ページでの computer・javascript_tool)は送った後では直せないので、session と文ごとに一度止める(出し直せば通す)。Write・Edit は公開 repo の README と HTML だけ(公開かは `gh api` で調べ、1 日覚える。調べられなければ公開とみなす)。辞書は上の「Install」 |
+| `wago-verb-reminder` | PreToolUse (ブラウザへの入力・メッセージの送信、Write・Edit) | 外に出る日本語の文の、熟語でない動詞(語種が和語の動詞)を並べて知らせる。補助的な語(為る・有る・居る・置く・因る)は除く。送りうる操作(メッセージの送信、ページでの computer)は送った後では直せないので、session と文ごとに一度止める(出し直せば通す)。ページで動かすスクリプト(javascript_tool)はコードなので見ない。Write・Edit は公開 repo の README と HTML だけ(公開かは `gh api` で調べ、1 日覚える。調べられなければ公開とみなす)。辞書は上の「Install」 |
 
 ### turn-state
 

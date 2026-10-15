@@ -430,4 +430,12 @@ fn private_word_guard_stops_a_push_with_listed_words() {
     )
     .unwrap();
     assert!(push("git push").is_empty(), "a repository listed to skip");
+
+    // The repository's own name is listed but not looked for inside it.
+    std::fs::write(repo.join("new.md"), "clean\npersonal notes\n").unwrap();
+    git(&["commit", "-q", "-am", "name"]);
+    std::fs::write(&list, "words = [\"personal\"]\n").unwrap();
+    assert!(push("git push").is_empty(), "its own name");
+    std::fs::write(&list, "words = [\"notes\"]\n").unwrap();
+    assert_eq!(push("git push").len(), 1, "another listed word");
 }

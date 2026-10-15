@@ -4,8 +4,8 @@
 //! Sino-Japanese compounds (和語の動詞: 要る・確かめる・足す), so that saying
 //! them with a compound (必要・確認・追加) can be weighed. Replacing them is
 //! not asked for. It looks at:
-//! - text typed into a page or sent as a message (the tools and fields of
-//!   the rule ja-kagi-overuse-reminder), and
+//! - text typed into a page or sent as a message (form_input and computer
+//!   of claude-in-chrome, beeper's send_message), and
 //! - text written with Write or Edit into a README or an HTML file of a
 //!   public repository (src/public_repo.rs). Documents for agents (docs,
 //!   CLAUDE.md, skill definitions) are left out.
@@ -19,12 +19,15 @@
 //! said.
 //!
 //! A note reaches Claude with the tool's result, after a message has gone
-//! out, so the tools that may send (a message, a click or a key in a page,
-//! a script run in it) are stopped once per session and text instead; the
-//! same call sent again goes through. Which were stopped is kept as empty
-//! files in `$WAGO_GUARD_STATE_DIR`, else `<temp>/claude-wago-verb`. Typing
-//! into a field (form_input) and writing a file can still be revised, so
-//! there it only notes.
+//! out, so the tools that may send (a message, a click or a key in a page)
+//! are stopped once per session and text instead; the same call sent again
+//! goes through. Which were stopped is kept as empty files in
+//! `$WAGO_GUARD_STATE_DIR`, else `<temp>/claude-wago-verb`. Typing into a
+//! field (form_input) and writing a file can still be revised, so there it
+//! only notes. A script run in a page (javascript_tool) is code, mostly
+//! reading the page, and its Japanese strings are search words rather than
+//! prose (くらうど was split into 食らう and stopped, 2026-10-16), so it is
+//! left out.
 
 use std::borrow::Cow;
 use std::path::{Path, PathBuf};
@@ -40,13 +43,12 @@ const ID: &str = "wago-verb-reminder";
 
 /// Tools that put text into a page or a message.
 static TYPING_TOOL: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^(mcp__claude-in-chrome__(form_input|computer|javascript_tool)|mcp__beeper__send_message)$")
+    Regex::new(r"^(mcp__claude-in-chrome__(form_input|computer)|mcp__beeper__send_message)$")
         .unwrap()
 });
 /// Of those, the ones that may send what they type.
 static SENDING_TOOL: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^(mcp__claude-in-chrome__(computer|javascript_tool)|mcp__beeper__send_message)$")
-        .unwrap()
+    Regex::new(r"^(mcp__claude-in-chrome__computer|mcp__beeper__send_message)$").unwrap()
 });
 const TYPING_FIELDS: [&str; 2] = ["tool_input.value", "tool_input.text"];
 
@@ -297,10 +299,10 @@ mod tests {
 
     #[test]
     fn tells_sending_tools_apart() {
+        assert!(!TYPING_TOOL.is_match("mcp__claude-in-chrome__javascript_tool"));
         for tool in [
             "mcp__beeper__send_message",
             "mcp__claude-in-chrome__computer",
-            "mcp__claude-in-chrome__javascript_tool",
         ] {
             assert!(
                 TYPING_TOOL.is_match(tool) && SENDING_TOOL.is_match(tool),
