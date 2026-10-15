@@ -13,6 +13,7 @@ pub mod head_trunc;
 pub mod label;
 pub mod language;
 pub mod post_push;
+pub mod private_words;
 pub mod push_check;
 pub mod rm_junction;
 pub mod sendfile;
@@ -23,7 +24,7 @@ pub mod wago;
 type Check = fn(&Input) -> Vec<Finding>;
 
 /// Every built-in check, by the name a rule file uses.
-pub const ALL: [(&str, Check); 12] = [
+pub const ALL: [(&str, Check); 13] = [
     ("backslash-shrink-guard", backslash::run),
     ("rm-junction-guard", rm_junction::run),
     ("askuser-label-guard", askuser::run),
@@ -36,6 +37,7 @@ pub const ALL: [(&str, Check); 12] = [
     ("language-guard", language::run),
     ("turn-state", turn_state::run),
     ("wago-verb-reminder", wago::run),
+    ("private-word-guard", private_words::run),
 ];
 
 pub fn find(name: &str) -> Option<Check> {

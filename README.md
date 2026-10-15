@@ -90,6 +90,7 @@ message = '''push の前に CI と同じ確認を回したか。'''
 | `sendfile-to-ysidepaney` | PreToolUse (SendUserFile) | 画像は ysidepaney に置き、動画(mp4・mov・webm・mkv・avi・m4v・wmv)はそのフォルダを Explorer で開いてファイルを選んだ状態にし、開く間はほかの窓が入力を取れないようにして、出たらすぐ最小化し(Windows のみ。開いた窓は一瞬見える)、SendUserFile を止める。置けない・開けないものと、それ以外のファイルは、改めて送るよう返す |
 | `stage-own-edit-reminder` | PreToolUse (Edit・Write) | HEAD から変更のある追跡済みのファイルの初回の編集を止め、`git stage-own-edit begin` で写しを取ってから出し直すよう返す(session とファイルごとに 1 回。出し直した編集は通す。写しは今のファイルと一致するときだけ begin 済みとみなす) |
 | `push-check-reminder` | PreToolUse (Bash) | `git push` を session・repo・HEAD の組ごとに初回だけ止め、push 前の確認の項目を返す。同じ push の 2 回目は通す |
+| `private-word-guard` | PreToolUse (Bash) | `git push` の前に、どの remote にもまだ無い commit(`HEAD --not --remotes`)の追加行と commit メッセージから、登録した個人の情報の語を探し、あれば止める。語と除外する repo は `~/.claude/private-words.toml`(`PRIVATE_WORDS_FILE`)に `words = [...]`・`skip_repos = ["owner/repo"]` で書く。ファイルが無ければ何もしない。意図して出すならコマンドの先頭に `PRIVATE_WORDS_OK=1` |
 | `post-push-reminder` | PostToolUse (Bash) | 成功した push の後、repo の push 後の script を知らせる |
 | `head-truncation-reminder` | PostToolUse (Bash) | 出力が最後の `\| head` の上限に届いたら、件数を数えるよう知らせる |
 | `label-guard` | Stop | ギリシャ文字・ローマ数字の見出しを止める |

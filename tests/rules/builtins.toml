@@ -11,4 +11,5 @@ builtins = [
   "label-guard",
   "language-guard",
   "wago-verb-reminder",
+  "private-word-guard",
 ]

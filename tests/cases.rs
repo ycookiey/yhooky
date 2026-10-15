@@ -355,3 +355,79 @@ fn a_rule_folder_that_cannot_be_read_is_a_problem_unless_missing() {
     assert_eq!(problems(PathBuf::new()), 1, "an empty path");
     assert_eq!(problems(file), 1, "a file");
 }
+
+#[test]
+fn private_word_guard_stops_a_push_with_listed_words() {
+    use std::process::Command;
+    let dir = tempfile::tempdir().unwrap();
+    let repo = dir.path().join("repo");
+    std::fs::create_dir_all(&repo).unwrap();
+    let git = |args: &[&str]| {
+        assert!(
+            Command::new("git")
+                .arg("-C")
+                .arg(&repo)
+                .args(args)
+                .status()
+                .unwrap()
+                .success()
+        )
+    };
+    git(&["init", "-q"]);
+    git(&["config", "user.email", "t@example.com"]);
+    git(&["config", "user.name", "t"]);
+    std::fs::write(repo.join("pushed.md"), "old Hidden-Word\n").unwrap();
+    git(&["add", "pushed.md"]);
+    git(&["commit", "-q", "-m", "pushed"]);
+    // What a remote already has is not looked at.
+    git(&["update-ref", "refs/remotes/origin/main", "HEAD"]);
+    std::fs::write(repo.join("new.md"), "clean\n").unwrap();
+    git(&["add", "new.md"]);
+    git(&["commit", "-q", "-m", "clean"]);
+
+    let list = dir.path().join("words.toml");
+    // SAFETY: only this test reads the variable.
+    unsafe { std::env::set_var("PRIVATE_WORDS_FILE", &list) };
+    let push = |command: &str| {
+        let raw = serde_json::json!({
+            "hook_event_name": "PreToolUse",
+            "tool_name": "Bash",
+            "cwd": repo.to_string_lossy(),
+            "tool_input": { "command": command },
+        });
+        yhooky::builtin::private_words::run(&yhooky::input::Input::parse(&raw.to_string()).unwrap())
+    };
+    assert!(push("git push").is_empty(), "no list file");
+    std::fs::write(&list, "words = [\"hidden-word\"]\n").unwrap();
+    assert!(push("git push").is_empty(), "only in a pushed commit");
+
+    std::fs::write(repo.join("new.md"), "clean\nnew hidden-word\n").unwrap();
+    git(&["commit", "-q", "-am", "add"]);
+    let found = push("git push");
+    assert_eq!(found.len(), 1, "in an unpushed commit");
+    assert!(matches!(found[0].kind, yhooky::output::Kind::Deny));
+    assert!(
+        found[0].message.contains("new.md:2"),
+        "{}",
+        found[0].message
+    );
+    assert!(found[0].message.contains("「hidden-word」"));
+    assert!(
+        push("PRIVATE_WORDS_OK=1 git push").is_empty(),
+        "let through on purpose"
+    );
+    assert!(push("git status").is_empty(), "not a push");
+
+    git(&[
+        "remote",
+        "add",
+        "origin",
+        "https://github.com/someone/personal.git",
+    ]);
+    std::fs::write(
+        &list,
+        "words = [\"hidden-word\"]\nskip_repos = [\"Someone/Personal\"]\n",
+    )
+    .unwrap();
+    assert!(push("git push").is_empty(), "a repository listed to skip");
+}
