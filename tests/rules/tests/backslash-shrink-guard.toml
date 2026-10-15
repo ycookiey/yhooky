@@ -1,3 +1,7 @@
+# Which inline-script commands were stopped once, kept apart from the real ones.
+[setup]
+env = { BACKSLASH_GUARD_STATE_DIR = "{root}/backslash-state" }
+
 [[case]]
 name = "heredoc-python"
 rule = "backslash-shrink-guard"
@@ -102,3 +106,37 @@ name = "double-quote-before-brace"
 rule = "backslash-shrink-guard"
 expect = "context"
 command = '''echo "C:\\{x}"'''
+
+# A script handed over inline reads one backslash where two were written:
+# stopped the first time, reminded when the same command is sent again.
+[[case]]
+name = "inline-node"
+rule = "backslash-shrink-guard"
+expect = "deny"
+contains = "インラインのスクリプト"
+command = '''node -e "console.log('a\\nb')"'''
+
+[[case]]
+name = "inline-node-again"
+rule = "backslash-shrink-guard"
+expect = "context"
+command = '''node -e "console.log('a\\nb')"'''
+
+[[case]]
+name = "inline-sed"
+rule = "backslash-shrink-guard"
+expect = "deny"
+command = '''sed -i "s/a/\\\\n/" f'''
+
+[[case]]
+name = "inline-python"
+rule = "backslash-shrink-guard"
+expect = "deny"
+command = '''python -c "print('\\t')"'''
+
+[[case]]
+name = "inline-other-session"
+rule = "backslash-shrink-guard"
+expect = "deny"
+command = '''node -e "console.log('a\\nb')"'''
+input = { session_id = "other" }

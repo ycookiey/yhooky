@@ -12,12 +12,53 @@
 //!
 //! Those are refused, pointing to single quotes or the Write tool. Elsewhere
 //! in double quotes, or outside quotes, bash often gives the same result
-//! either way, so there it only reminds.
+//! either way, so there it only reminds, unless the command hands a script
+//! over inline (`node -e`, `python -c`, `sed`, `awk`, ...): the script then
+//! reads one backslash where two were written (a replacement's `\\r\\n` and
+//! a JS `'\\n'` came out broken, 2026-10-15). That is stopped once per
+//! session and command; the same command sent again only reminds. Which
+//! commands were stopped is kept as empty files in
+//! `$BACKSLASH_GUARD_STATE_DIR`, else `<temp>/claude-backslash-guard`.
+
+use std::fs;
+use std::path::PathBuf;
+use std::sync::LazyLock;
+
+use regex::Regex;
 
 use crate::input::Input;
 use crate::output::{Finding, Kind};
+use crate::text::windows_path;
 
 const ID: &str = "backslash-shrink-guard";
+
+/// A command that takes its script as an argument.
+static INLINE_SCRIPT: LazyLock<Regex> = LazyLock::new(|| {
+    let head = r"(^|[;&|(\s])";
+    let args = r"\s([^;&|\n]*\s)?";
+    Regex::new(&format!(
+        r"{head}(node|bun)(\.exe)?{args}(-e|-p|--eval|--print)(\s|=)|{head}deno(\.exe)?\s+eval\s|{head}(python3?|py)(\.exe)?{args}-c\s|{head}(perl|ruby)(\.exe)?{args}-[a-zA-Z]*e\s|{head}(sed|g?awk)(\.exe)?\s"
+    ))
+    .unwrap()
+});
+
+fn state_dir() -> PathBuf {
+    match std::env::var("BACKSLASH_GUARD_STATE_DIR") {
+        Ok(dir) if !dir.is_empty() => PathBuf::from(windows_path(&dir)),
+        _ => std::env::temp_dir().join("claude-backslash-guard"),
+    }
+}
+
+/// Whether this session sends `command` for the first time; remembers it.
+/// Without a place to remember it, a stop would come back every time, so
+/// that counts as seen.
+fn first_time(session: &str, command: &str) -> bool {
+    let key = format!("{session}\n{command}");
+    let hash = sha1_smol::Sha1::from(key.as_bytes()).digest().to_string();
+    let state = state_dir();
+    let mark = state.join(&hash[..16]);
+    !mark.exists() && fs::create_dir_all(&state).is_ok() && fs::write(&mark, "").is_ok()
+}
 
 /// The heredocs a line opens: (strip leading tabs, end word), as the
 /// pattern `<<(-?)\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\2` finds them.
@@ -218,7 +259,19 @@ pub fn run(input: &Input) -> Vec<Finding> {
     if places.contains(&Place::DoubleSpecial) {
         where_.push("二重引用の中で `$`・`` ` ``・`\"` の直前(縮んだ `\\` がその文字を打ち消す。`\"…\\\\$k\"` の `$k` が展開されない)");
     }
-    let finding = if where_.is_empty() {
+    let finding = if where_.is_empty()
+        && INLINE_SCRIPT.is_match(&rest)
+        && first_time(&input.text("session_id"), &command)
+    {
+        Finding::new(
+            ID,
+            Kind::Deny,
+            "Bash ツールは実行の前に `\\\\` を `\\` 1 本に縮める(~/.claude/docs/bash.md)。\
+             インラインのスクリプト(node -e・python -c・sed・awk 等)の中の `\\\\` は、スクリプトが受け取る文字が変わる\
+             (置換文字列の `\\\\r\\\\n`、JS の `'\\\\n'` が壊れた)。中身を Write ツールでファイルに書いて実行する\
+             (node <file>・python <file>・sed -f <file>)。意図どおりなら同じコマンドを出し直せば通す。",
+        )
+    } else if where_.is_empty() {
         Finding::new(
             ID,
             Kind::Context,
@@ -256,5 +309,37 @@ mod tests {
             heredocs("a <<A b <<B"),
             vec![(false, "A".into()), (false, "B".into())]
         );
+    }
+
+    #[test]
+    fn finds_inline_scripts() {
+        for command in [
+            r#"node -e "x""#,
+            r#"node --eval="x""#,
+            r#"bun -p "x""#,
+            r#"deno eval "x""#,
+            r#"python -c "x""#,
+            r#"py -3 -c "x""#,
+            r#"python3 -I -c "x""#,
+            "perl -pe 's/a/b/' f",
+            r#"ruby -e "x""#,
+            r#"sed -i "s/a/b/" f"#,
+            "cd x && sed -n 1p f",
+            "awk '{print}' f",
+            r#"ls | gawk "x""#,
+        ] {
+            assert!(INLINE_SCRIPT.is_match(command), "{command}");
+        }
+        for command in [
+            r#"grep -n "a" f"#,
+            "echo a",
+            "nodemon x",
+            "python script.py",
+            "node script.js",
+            "used x",
+            "git log --grep=sed x",
+        ] {
+            assert!(!INLINE_SCRIPT.is_match(command), "{command}");
+        }
     }
 }
