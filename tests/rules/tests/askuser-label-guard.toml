@@ -46,3 +46,30 @@ name = "lowercase"
 rule = "askuser-label-guard"
 expect = "deny"
 input = { tool_name = "AskUserQuestion", tool_input = { questions = [{ question = "q", options = [{ label = "a 並列化" }, { label = "b 先行起動" }] }] } }
+
+# A description is not shown in a question that has previews.
+[[case]]
+name = "description-beside-preview"
+rule = "askuser-label-guard"
+expect = "deny"
+contains = "description のある選択肢: 「A 案」"
+input = { tool_name = "AskUserQuestion", tool_input = { questions = [{ question = "q", options = [{ label = "A 案", description = "読まれない", preview = "p" }, { label = "B 案", description = "" }] }] } }
+
+[[case]]
+name = "description-without-preview"
+rule = "askuser-label-guard"
+expect = "quiet"
+input = { tool_name = "AskUserQuestion", tool_input = { questions = [{ question = "q", options = [{ label = "A 案", description = "見える" }, { label = "B 案", description = "見える" }] }] } }
+
+[[case]]
+name = "preview-without-description"
+rule = "askuser-label-guard"
+expect = "quiet"
+input = { tool_name = "AskUserQuestion", tool_input = { questions = [{ question = "q", options = [{ label = "A 案", description = "", preview = "p" }, { label = "B 案", description = "", preview = "q" }] }] } }
+
+# Each question is judged by its own previews.
+[[case]]
+name = "preview-in-another-question"
+rule = "askuser-label-guard"
+expect = "quiet"
+input = { tool_name = "AskUserQuestion", tool_input = { questions = [{ question = "q1", options = [{ label = "A 案", description = "見える" }] }, { question = "q2", options = [{ label = "B 案", description = "", preview = "p" }] }] } }

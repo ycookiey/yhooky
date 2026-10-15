@@ -86,7 +86,7 @@ message = '''push の前に CI と同じ確認を回したか。'''
 |---|---|---|
 | `backslash-shrink-guard` | PreToolUse (Bash) | Bash ツールは `\\` を `\` に縮める。heredoc の本文と単一引用の中の `\\` は止める。インラインのスクリプト(node -e・python -c・sed・awk 等)を渡すコマンドの `\\` は、session とコマンドごとに一度止める(出し直せば知らせるだけ) |
 | `rm-junction-guard` | PreToolUse (Bash) | node_modules を含むフォルダへの `rm -r` を止める(junction の先まで消しうる) |
-| `askuser-label-guard` | PreToolUse (AskUserQuestion) | 選択肢の label が A, B, C … の ID で始まらなければ止める |
+| `askuser-label-guard` | PreToolUse (AskUserQuestion) | 選択肢の label が A, B, C … の ID で始まらないとき、preview のある質問の選択肢に description があるとき(表示されない)に止める。長い説明は ysidepaney の note に出すよう返す |
 | `sendfile-to-ysidepaney` | PreToolUse (SendUserFile) | 画像は ysidepaney に置き、動画(mp4・mov・webm・mkv・avi・m4v・wmv)はそのフォルダを Explorer で開いてファイルを選んだ状態にし、開く間はほかの窓が入力を取れないようにして、出たらすぐ最小化し(Windows のみ。開いた窓は一瞬見える)、SendUserFile を止める。置けない・開けないものと、それ以外のファイルは、改めて送るよう返す |
 | `stage-own-edit-reminder` | PreToolUse (Edit・Write) | HEAD から変更のある追跡済みのファイルの初回の編集を止め、`git stage-own-edit begin` で写しを取ってから出し直すよう返す(session とファイルごとに 1 回。出し直した編集は通す。写しは今のファイルと一致するときだけ begin 済みとみなす) |
 | `push-check-reminder` | PreToolUse (Bash) | `git push` を session・repo・HEAD の組ごとに初回だけ止め、push 前の確認の項目を返す。同じ push の 2 回目は通す |
