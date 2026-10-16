@@ -26,6 +26,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
+use crate::docs;
 use crate::input::Input;
 use crate::output::{Finding, Kind};
 use crate::text::windows_path;
@@ -131,13 +132,14 @@ pub fn run(input: &Input) -> Vec<Finding> {
     } else {
         ""
     };
+    let see = docs::pointer("。", "git.md", "");
     vec![Finding::new(
         ID,
         Kind::Deny,
         format!(
             "{rel} には HEAD からの未コミットの変更がある(他 session の作業かもしれない)。この file の初回の編集なので一度止めた。{stale}\
              今回の編集を後で単独で commit するなら、先に `git stage-own-edit begin {rel}` を repo の top で実行してから、\
-             同じ編集を出し直す(commit 時は `git stage-own-edit stage {rel}` で自分の行だけを stage する。docs/git.md)。\
+             同じ編集を出し直す(commit 時は `git stage-own-edit stage {rel}` で自分の行だけを stage する{see})。\
              単独で commit しないなら、そのまま出し直せば通る。"
         ),
     )]

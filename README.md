@@ -45,7 +45,9 @@ Register yhooky once per event under `hooks` in `settings.json`. With `args`, it
 
 ### Pointers to your documents
 
-Some built-in checks name a document for details in their messages (`bash.md`, `git.md`, `public-repo.md`, `external-japanese.md`). Set `YHOOKY_DOCS_DIR` to the folder that holds them, and the messages name `<dir>/<file>`; without it, the pointer is left out. A hook inherits Claude Code's environment, so the `env` block of `settings.json` can set it:
+Some built-in checks name a document for details in their messages (`bash.md`, `git.md`, `public-repo.md`, `external-japanese.md`). These documents do not ship with yhooky: they are the user's own notes, and a message may point into them down to a section title or a rule number. The author's notes are at <https://github.com/ycookiey/dotfiles/tree/main/claude/docs>.
+
+Set `YHOOKY_DOCS_DIR` to the folder that holds them, and the messages name `<dir>/<file>`; without it, the pointer is left out. A hook inherits Claude Code's environment, so the `env` block of `settings.json` can set it:
 
 ```json
 {
