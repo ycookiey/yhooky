@@ -2,9 +2,6 @@
 //!
 //! Stops a `git push` the first time for each session, repository and HEAD,
 //! with the checks to run before it; the same push sent again goes through.
-//! For a public repository (src/public_repo.rs) whose commits to push change
-//! text for readers (a README, Markdown, comments, a package's description),
-//! it also asks for that text to be reviewed by a subagent first.
 //! A new HEAD (amend, rebase) stops it again. As a note added to the
 //! context, the checklist arrived together with the push's result, after
 //! the push (2026-10-11).
@@ -137,8 +134,6 @@ pub fn run(input: &Input) -> Vec<Finding> {
     vec![Finding::new(ID, Kind::Deny, message)]
 }
 
-/// Added for a public repository when the commits to push change text for
-/// readers (src/builtin/public_writing.rs).
 const PUBLIC_REVIEW: &str = "\nこの repo は public で、push する範囲に書き物の変更がある。push する範囲の書き物の変更を、\
      レビュー用の subagent に渡して ~/.claude/docs/public-repo.md の観点(言語がそろっているか・普通の public repo として標準的な形か・\
      個人の具体を書いていないか)でレビューし、指摘を直してから出し直す。対象は README・md・コード内のコメント・package の説明・commit のメッセージ。";

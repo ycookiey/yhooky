@@ -1,22 +1,15 @@
 //! public-repo-writing-reminder (PreToolUse).
 //!
-//! In a repository others can read (src/public_repo.rs), notes once per
-//! session and repository what text written there should match: the
-//! language of the repository's README and commits, and the usual form of
-//! a public repository of its kind, not the form the repository has so far
-//! (a public package's README had grown a version history and its comments
-//! mixed two languages, 2026-10-16). It notes at two points, each counted
-//! on its own:
-//! - the first Edit or Write of a file in the repository, and
-//! - the first `gh pr create` or `gh release create` for it, whose text
-//!   cannot be made private afterwards. The repository is the one named by
-//!   `-R`/`--repo`, else the folder the command runs in.
+//! The form an existing repository has so far is not taken as the standard:
+//! its text is compared with public repositories of its kind instead.
+//! Creating a PR or a release is a point of its own, since their text
+//! cannot be made private afterwards.
+//!
+//! A repository and its worktrees count as one repository, named by their
+//! shared git config.
 //!
 //! Which were noted is kept as empty files in `$PUBLIC_WRITING_STATE_DIR`,
 //! else `<temp>/claude-public-writing`.
-//!
-//! [`writing_changed`] is used by push-check-reminder, which asks for a
-//! review of such text before a push to a public repository.
 
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -166,7 +159,8 @@ fn diff_has_writing(diff: &str) -> bool {
 
 /// Whether the commits about to be pushed from `root` change text for
 /// readers. They are the commits since the upstream, else since origin's
-/// default branch; when neither is known, they are counted as changing it.
+/// default branch; when neither is known, they are counted as changing it,
+/// so that a review is not skipped.
 pub(crate) fn writing_changed(root: &str) -> bool {
     for base in ["@{upstream}...HEAD", "refs/remotes/origin/HEAD...HEAD"] {
         let out = Command::new("git")
