@@ -17,10 +17,33 @@ const KNOWN_FOR: Duration = Duration::from_secs(24 * 60 * 60);
 const UNKNOWN_FOR: Duration = Duration::from_secs(10 * 60);
 const GH_TIMEOUT: Duration = Duration::from_secs(5);
 
+/// `path` with links resolved: the path itself, or, for a file that does not
+/// exist yet, the nearest existing folder above it joined with the rest. A
+/// folder reached through a link (a symlink or junction pointing into a
+/// repository) has no `.git` above it until resolved.
+fn real_path(path: &Path) -> PathBuf {
+    for dir in path.ancestors() {
+        let Ok(real) = dir.canonicalize() else {
+            continue;
+        };
+        let real = match real.to_str() {
+            Some(s) if s.starts_with(r"\\?\UNC\") => PathBuf::from(format!(r"\\{}", &s[8..])),
+            Some(s) => PathBuf::from(s.strip_prefix(r"\\?\").unwrap_or(s)),
+            None => real,
+        };
+        return match path.strip_prefix(dir) {
+            Ok(rest) if !rest.as_os_str().is_empty() => real.join(rest),
+            _ => real,
+        };
+    }
+    path.to_path_buf()
+}
+
 /// The config file of the repository holding `path`: `.git/config`, or for
 /// a linked worktree (`.git` is a file) the config of the main repository.
 pub fn git_config(path: &Path) -> Option<PathBuf> {
-    let mut dir = if path.is_dir() { path } else { path.parent()? };
+    let path = real_path(path);
+    let mut dir = if path.is_dir() { &path } else { path.parent()? };
     loop {
         let git = dir.join(".git");
         if git.is_dir() {
@@ -210,9 +233,48 @@ mod tests {
             fs::canonicalize(main.join(".git/config")).unwrap()
         );
         assert_eq!(
-            git_config(&main.join("a.md")).unwrap(),
-            main.join(".git/config")
+            fs::canonicalize(git_config(&main.join("a.md")).unwrap()).unwrap(),
+            fs::canonicalize(main.join(".git/config")).unwrap()
         );
+    }
+
+    /// A link to a folder: a symlink, or on Windows without the right to make
+    /// one, a junction.
+    fn link_dir(target: &Path, link: &Path) {
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(target, link).unwrap();
+        #[cfg(windows)]
+        if std::os::windows::fs::symlink_dir(target, link).is_err() {
+            let made = Command::new("cmd")
+                .arg("/C")
+                .arg("mklink")
+                .arg("/J")
+                .arg(link)
+                .arg(target)
+                .stdout(Stdio::null())
+                .status()
+                .unwrap();
+            assert!(made.success());
+        }
+    }
+
+    #[test]
+    fn finds_the_config_through_a_link() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo = dir.path().join("repo");
+        fs::create_dir_all(repo.join(".git")).unwrap();
+        fs::create_dir_all(repo.join("docs/sub")).unwrap();
+        fs::write(repo.join(".git/config"), "").unwrap();
+        fs::write(repo.join("docs/a.md"), "").unwrap();
+        let home = dir.path().join("home");
+        fs::create_dir_all(&home).unwrap();
+        link_dir(&repo.join("docs"), &home.join("docs"));
+        let want = fs::canonicalize(repo.join(".git/config")).unwrap();
+        for path in ["docs/a.md", "docs/new.md", "docs/sub/new/deeper.md", "docs"] {
+            let found = git_config(&home.join(path)).unwrap_or_else(|| panic!("{path}"));
+            assert_eq!(fs::canonicalize(found).unwrap(), want, "{path}");
+        }
+        assert_eq!(git_config(&home.join("b.md")), None, "outside the link");
     }
 
     #[test]
