@@ -143,14 +143,14 @@ pub fn run(input: &Input) -> Vec<Finding> {
     if !runs_git_push(&command) {
         return Vec::new();
     }
-    let Some(list) = list_file()
-        .and_then(|f| fs::read_to_string(f).ok())
-        .and_then(|t| {
-            toml::from_str::<List>(&t)
-                .map_err(|e| crate::log(&format!("private-word-guard: {e}")))
-                .ok()
-        })
-    else {
+    let Some(file) = list_file() else {
+        return Vec::new();
+    };
+    let Some(list) = fs::read_to_string(&file).ok().and_then(|t| {
+        toml::from_str::<List>(&t)
+            .map_err(|e| crate::log(&format!("private-word-guard: {e}")))
+            .ok()
+    }) else {
         return Vec::new();
     };
     if list.words.iter().all(|w| w.trim().is_empty()) {
@@ -218,9 +218,10 @@ pub fn run(input: &Input) -> Vec<Finding> {
         ID,
         Kind::Deny,
         format!(
-            "push する commit に、個人を推測させうる語の候補(~/.claude/private-words.toml)がある: {}{rest}。\
+            "push する commit に、個人を推測させうる語の候補({})がある: {}{rest}。\
              一度止めた。公開されうる repo に出してよいかを考え直す。出さないなら未 push の commit から消す\
              {see}。問題なければ、同じ push を出し直せば通る。",
+            file.display(),
             all[..all.len().min(LIMIT)].join("、")
         ),
     )]

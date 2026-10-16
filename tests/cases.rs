@@ -415,6 +415,11 @@ fn private_word_guard_stops_a_push_with_listed_words() {
         found[0].message
     );
     assert!(found[0].message.contains("「hidden-word」"));
+    assert!(
+        found[0].message.contains("words.toml)がある"),
+        "names the list it read: {}",
+        found[0].message
+    );
     assert!(push("git push").is_empty(), "the same push sent again");
     assert!(push("git status").is_empty(), "not a push");
     std::fs::write(
