@@ -1,14 +1,14 @@
 # yhooky
 
-Claude Code の hook を、1 つの実行ファイルでまとめて動かす (Rust)。
+Runs Claude Code hooks from a single executable (Rust).
 
-hook を shell の script で書くと、ツールを使うたびに script が何本も起動し、その中でも jq や grep が起動する。Windows の Git Bash ではプロセスの起動が重く、1 本で 0.5〜1.5 秒かかる。親が終わったあとも CPU を使い続けるプロセスが残ることもある。
+Hooks written as shell scripts start several scripts on every tool call, and each script starts jq or grep in turn. Starting a process is slow on Windows Git Bash, 0.5 to 1.5 seconds each, and some processes can keep using CPU after their parent has exited.
 
-yhooky は入力の JSON を 1 回だけ読み、その出来事に当てはまる規則を全部、1 つのプロセスの中で判定して、答えを 1 つ返す。shell を通さずに起動できる(exec form)。
+yhooky reads the input JSON once, checks every rule that applies to the event inside one process, and returns a single answer. It can be started without a shell (exec form).
 
-- 単純な規則(「入力のこの項目がこの正規表現に当たれば、文を差し込む / 止める」)は TOML のファイルに書く。足すのも直すのも、build し直さなくてよい
-- パターンでは書けない判定(引用の解析、ファイルの確認、transcript の読み取り)は、組み込みの判定(built-in)として持つ
-- 失敗しても邪魔をしない。読めない入力、読めない規則、panic のどれでも、何も出力せず終了コード 0 で終わり、理由を `~/.claude/logs/yhooky.log` に書く
+- Simple rules ("if this input field matches this regular expression, add a note / stop") are written in TOML files. Adding or changing one needs no rebuild.
+- Checks a pattern cannot express (parsing quotes, looking at files, reading the transcript) are built in.
+- It never gets in the way when it fails. On unreadable input, an unreadable rule or a panic, it prints nothing, exits with status 0, and writes the reason to `~/.claude/logs/yhooky.log`.
 
 ## Install
 
@@ -18,18 +18,18 @@ cd yhooky
 cargo install --path .
 ```
 
-組み込みの判定 `wago-verb-reminder` は辞書(UniDic から作る約 120 MB のフォルダ)を使う。実行ファイルの隣の `unidic` フォルダか、環境変数 `YHOOKY_UNIDIC_DIR` の指すフォルダに置く。無ければこの判定は何もしない。作り方:
+The built-in check `wago-verb-reminder` uses a dictionary (a folder of about 120 MB built from UniDic). Put it in a `unidic` folder next to the executable, or in the folder named by the environment variable `YHOOKY_UNIDIC_DIR`. Without it, this check does nothing. To build it:
 
 ```sh
-# unidic-mecab-2.1.2 を展開したフォルダから作る。context_id_freq.txt は lindera-unidic の crate にある(省略可)
-cargo run --release --example build_unidic -- <unidic-mecab-2.1.2> <出力先>/unidic [context_id_freq.txt]
+# From an unpacked unidic-mecab-2.1.2. context_id_freq.txt is in the lindera-unidic crate (optional).
+cargo run --release --example build_unidic -- <unidic-mecab-2.1.2> <output>/unidic [context_id_freq.txt]
 ```
 
-辞書は UniDic(© The UniDic Consortium)を BSD ライセンスで使い、許諾文を辞書のフォルダの `UNIDIC-BSD` に置く。
+The dictionary uses UniDic (© The UniDic Consortium) under the BSD license; the license text is placed in the dictionary folder as `UNIDIC-BSD`.
 
-## 登録
+## Setup
 
-`settings.json` の hooks に、出来事ごとに 1 つ登録する。`args` を付けると shell を通さずに起動する。
+Register yhooky once per event under `hooks` in `settings.json`. With `args`, it starts without a shell.
 
 ```json
 {
@@ -41,99 +41,99 @@ cargo run --release --example build_unidic -- <unidic-mecab-2.1.2> <出力先>/u
 }
 ```
 
-## 規則
+## Rules
 
-規則は次のフォルダの `*.toml` から、この順(フォルダの中はファイル名の順)に読む。
+Rules are read from the `*.toml` files in these folders, in this order (files within a folder by name):
 
-1. `~/.claude/hooks/rules/`(`HOME`、なければ `USERPROFILE`)
-2. `$CLAUDE_PROJECT_DIR/.claude/hooks/rules/`(project の規則。1 と同じフォルダなら読まない)
+1. `~/.claude/hooks/rules/` (`HOME`, else `USERPROFILE`)
+2. `$CLAUDE_PROJECT_DIR/.claude/hooks/rules/` (project rules; skipped when it is the same folder as 1)
 
 ```toml
-# 組み込みの判定のうち、動かすもの
+# Built-in checks to run
 builtins = ["backslash-shrink-guard", "language-guard"]
 
 [[rule]]
 id = "push-check-reminder"
-event = "PreToolUse"                 # PreToolUse・PostToolUse・Stop など
-tools = '^Bash$'                     # ツール名が当たるべき正規表現
-fields = ["tool_input.command"]      # 読む項目(. 区切り)。最初の空でないもの
-all = ['(^|\s)git\s+push(\s|$)']     # どれも、どこかの行に当たる
-none = ['--dry-run']                 # どれも、どの行にも当たらない
-action = "context"                   # context(文を差し込む)・deny(止める)・deny-once(session と照合した文ごとに一度だけ止め、出し直せば文を差し込むだけ)・block(Stop で止める)
-message = '''push の前に CI と同じ確認を回したか。'''
+event = "PreToolUse"                 # PreToolUse, PostToolUse, Stop, ...
+tools = '^Bash$'                     # regular expression the tool name must match
+fields = ["tool_input.command"]      # fields to read (dot-separated); the first that is not empty
+all = ['(^|\s)git\s+push(\s|$)']     # each must match some line
+none = ['--dry-run']                 # none may match any line
+action = "context"                   # context (add a note), deny (stop), deny-once (stop once per session and matched text; sent again, it only adds the note), block (stop at Stop)
+message = '''Did you run the same checks as CI before pushing?'''
 ```
 
-ほかの項目:
+Other fields:
 
-| 項目 | 意味 |
+| Field | Meaning |
 |---|---|
-| `equals` | 項目の値が、この文字列と同じ(`jq -r` が出す形で比べる)。例: `{ "tool_input.run_in_background" = "true" }` |
-| `transform` | 照合の前に変える。`slashes`(`\` を `/` に)、`squeeze-slashes`(続く `/` を 1 つに) |
-| `repo_dir_in` | コマンドが作業するフォルダ(最後の `git -C <dir>`、なければ最後の `cd <dir>`、なければ hook の cwd)が、このどれか |
-| `repo_dir_in_env` | 設定されていれば `repo_dir_in` の代わりにする環境変数(空白区切り) |
-| `repo_remote` | そのフォルダの `origin` の URL が当たるべき正規表現 |
-| `group` | 同じ group の規則は、最初に当たった 1 つだけを数える |
+| `equals` | The field's value equals this string (compared in the form `jq -r` prints). Example: `{ "tool_input.run_in_background" = "true" }` |
+| `transform` | Changes the text before matching: `slashes` (`\` to `/`), `squeeze-slashes` (runs of `/` to one) |
+| `repo_dir_in` | The folder the command works in (the last `git -C <dir>`, else the last `cd <dir>`, else the hook's cwd) is one of these |
+| `repo_dir_in_env` | Environment variable used instead of `repo_dir_in` when set (space-separated) |
+| `repo_remote` | Regular expression the `origin` URL of that folder must match |
+| `group` | Of the rules in one group, only the first that matches counts |
 
-`message` の中の `{repo_dir}` はそのフォルダに、`{repo_name}` は `origin` の URL の最後の部分(`.git` を除く)に置き換わる。
+In `message`, `{repo_dir}` is replaced by that folder, and `{repo_name}` by the last part of the `origin` URL (without `.git`).
 
-正規表現は Rust の regex。shell の hook の `grep -E` と同じく、1 行ずつ照合する(`^` と `$` は各行の頭と終わり)。
+Regular expressions are Rust regex. As with `grep -E` in shell hooks, they are matched one line at a time (`^` and `$` are the start and end of each line).
 
-複数の規則が当たったとき、止める規則が 1 つでもあれば止め、理由はつなげて返す。差し込む文もつなげる。
+When several rules match, the call is stopped if any of them stops it, with the reasons joined; notes to add are joined as well.
 
-### 組み込みの判定
+### Built-in checks
 
-| 名前 | 出来事 | 内容 |
+| Name | Event | What it does |
 |---|---|---|
-| `backslash-shrink-guard` | PreToolUse (Bash) | Bash ツールは `\\` を `\` に縮める。heredoc の本文と単一引用の中の `\\` は止める。インラインのスクリプト(node -e・python -c・sed・awk 等)を渡すコマンドの `\\` は、session とコマンドごとに一度止める(出し直せば知らせるだけ) |
-| `rm-junction-guard` | PreToolUse (Bash) | node_modules を含むフォルダへの `rm -r` を止める(junction の先まで消しうる) |
-| `askuser-label-guard` | PreToolUse (AskUserQuestion) | 選択肢の label が A, B, C … の ID で始まらないとき、preview のある質問の選択肢に description があるとき(表示されない)に止める。長い説明は ysidepaney の note に出すよう返す |
-| `sendfile-to-ysidepaney` | PreToolUse (SendUserFile) | 画像は ysidepaney に置き、動画(mp4・mov・webm・mkv・avi・m4v・wmv)はそのフォルダを Explorer で開いてファイルを選んだ状態にし、開く間はほかの窓が入力を取れないようにして、出たらすぐ最小化し(Windows のみ。開いた窓は一瞬見える)、SendUserFile を止める。置けない・開けないものと、それ以外のファイルは、改めて送るよう返す |
-| `stage-own-edit-reminder` | PreToolUse (Edit・Write) | HEAD から変更のある追跡済みのファイルの初回の編集を止め、`git stage-own-edit begin` で写しを取ってから出し直すよう返す(session とファイルごとに 1 回。出し直した編集は通す。写しは今のファイルと一致するときだけ begin 済みとみなす) |
-| `push-check-reminder` | PreToolUse (Bash) | `git push` を session・repo・HEAD の組ごとに初回だけ止め、push 前の確認の項目を返す。同じ push の 2 回目は通す。公開 repo への push で、push する範囲(upstream から、無ければ origin の既定の branch からの commit)が読み手向けの文(README・md・`package.json`・追加したコメントの行)を変えていれば、その文を subagent にレビューさせるよう足す |
-| `public-repo-writing-reminder` | PreToolUse (Edit・Write、Bash・PowerShell) | 公開 repo で、書き物の言語を README と既存の commit にそろえること、同種の公開 repo の標準的な形と比べることを知らせる。最初に file を書くときと、最初に `gh pr create`・`gh release create` を出すとき(repo は `-R`・`--repo`、無ければ実行する場所)に、session と repo ごとに 1 回ずつ。後者では、説明文を後から非公開にできないことも添える。公開かの調べ方は `wago-verb-reminder` と同じ |
-| `private-word-guard` | PreToolUse (Bash) | `git push` の前に、どの remote にもまだ無い commit(`HEAD --not --remotes`)の追加行と commit メッセージから、個人を推測させうる語の候補を探す。当たれば、考え直すために一度止める(session・repo・当たった語と場所の組ごとに 1 回。同じ push を出し直せば通す)。禁止の一覧ではないので、候補は広めに入れてよい。語と除外する repo は `~/.claude/private-words.toml`(`PRIVATE_WORDS_FILE`)に `words = [...]`・`skip_repos = ["owner/repo"]` で書く。英数字だけの語は単語の境目で照合し、push 先の repo 自身の名前は照合しない。ファイルが無ければ何もしない |
-| `heredoc-size-guard` | PreToolUse (Bash) | heredoc の本文が 100 行を超え、単一引用符を含むとき、session とコマンドごとに一度止める。Bash ツールがコマンドを包む処理で `unexpected EOF` になり、何も実行されないことがあるため。Write ツールでファイルに書いて実行するよう返す(出し直せば通す) |
-| `post-push-reminder` | PostToolUse (Bash) | 成功した push の後、repo の push 後の script を知らせる |
-| `head-truncation-reminder` | PostToolUse (Bash) | 出力が最後の `\| head` の上限に届いたら、件数を数えるよう知らせる |
-| `label-guard` | Stop | ギリシャ文字・ローマ数字の見出しを止める |
-| `language-guard` | Stop | 最後の返答が英語主体なら止める |
-| `turn-state` | Stop・PostToolUse (Monitor) | ターンの終わりに、まだ動いている裏の処理を `<session>.stop.json` に書く(下の「turn-state」)。何も返さない |
-| `wago-verb-reminder` | PreToolUse (ブラウザへの入力・メッセージの送信、Write・Edit) | 外に出る日本語の文の、熟語でない動詞(語種が和語の動詞)を並べて知らせる。補助的な語(為る・有る・居る・置く・因る)は除く。送りうる操作(メッセージの送信、ページでの computer)は送った後では直せないので、session と文ごとに一度止める(出し直せば通す)。ページで動かすスクリプト(javascript_tool)はコードなので見ない。Write・Edit は公開 repo の README と HTML だけ(公開かは `gh api` で調べ、1 日覚える。調べられなければ公開とみなす)。辞書は上の「Install」 |
+| `backslash-shrink-guard` | PreToolUse (Bash) | The Bash tool shrinks `\\` to `\`. Stops `\\` in a heredoc body or inside single quotes. For a command that passes an inline script (node -e, python -c, sed, awk, ...), stops `\\` once per session and command (sent again, it only notes it) |
+| `rm-junction-guard` | PreToolUse (Bash) | Stops `rm -r` on a folder that holds node_modules (it can delete through a junction) |
+| `askuser-label-guard` | PreToolUse (AskUserQuestion) | Stops when an option label does not start with an ID A, B, C, ..., or when an option of a question with a preview has a description (it is not shown). Asks for long explanations to go to a ysidepaney note |
+| `sendfile-to-ysidepaney` | PreToolUse (SendUserFile) | Puts images in ysidepaney. For videos (mp4, mov, webm, mkv, avi, m4v, wmv), opens their folder in Explorer with the file selected, keeps other windows from taking input while it opens, and minimizes it right after (Windows only; the window shows for a moment). Then stops SendUserFile. For files it could not place or open, and for other files, asks to send them again |
+| `stage-own-edit-reminder` | PreToolUse (Edit, Write) | Stops the first edit of a tracked file that differs from HEAD, and asks to take a copy with `git stage-own-edit begin` before sending it again (once per session and file; the edit sent again goes through; a copy counts as begun only while it matches the current file) |
+| `push-check-reminder` | PreToolUse (Bash) | Stops `git push` the first time for each session, repository and HEAD, with the checks to run before a push. The same push sent again goes through. For a push to a public repository whose commits to push (since the upstream, else since origin's default branch) change text for readers (a README, Markdown, `package.json`, added comment lines), it also asks for that text to be reviewed by a subagent |
+| `public-repo-writing-reminder` | PreToolUse (Edit, Write, Bash, PowerShell) | In a public repository, notes that text should use the language of the README and existing commits, and be compared with the usual form of public repositories of its kind. Once per session and repository at each of two points: the first file written, and the first `gh pr create` or `gh release create` (the repository named by `-R`/`--repo`, else where the command runs). At the second point it adds that the description cannot be made private afterwards. Whether a repository is public is found as in `wago-verb-reminder` |
+| `private-word-guard` | PreToolUse (Bash) | Before `git push`, looks for words that could identify a person in the added lines and commit messages of commits no remote has yet (`HEAD --not --remotes`). On a match, stops once to think it over (once per session, repository and set of words and places found; the same push sent again goes through). It is not a deny list, so the list can be broad. Words and repositories to skip go in `~/.claude/private-words.toml` (`PRIVATE_WORDS_FILE`) as `words = [...]` and `skip_repos = ["owner/repo"]`. Words of ASCII letters and digits only match at word boundaries, and the name of the repository pushed to is not matched. Without the file it does nothing |
+| `heredoc-size-guard` | PreToolUse (Bash) | Stops once per session and command when a heredoc body is longer than 100 lines and holds single quotes, since the Bash tool's wrapping of the command can fail with `unexpected EOF` and run nothing. Asks to write the file with the Write tool and run it (sent again, it goes through) |
+| `post-push-reminder` | PostToolUse (Bash) | After a successful push, notes the repository's post-push script |
+| `head-truncation-reminder` | PostToolUse (Bash) | When the output reaches the limit of the last `\| head`, asks to count the results |
+| `label-guard` | Stop | Stops headings labeled with Greek letters or Roman numerals |
+| `language-guard` | Stop | Stops when the last reply is mostly English |
+| `turn-state` | Stop, PostToolUse (Monitor) | At the end of a turn, writes the background work still running to `<session>.stop.json` (see "turn-state" below). Returns nothing |
+| `wago-verb-reminder` | PreToolUse (input to a browser page, sending a message, Write, Edit) | In Japanese text that goes out, lists verbs that are not Sino-Japanese compounds (native Japanese verbs). Auxiliary words (為る, 有る, 居る, 置く, 因る) are left out. Actions that may send something (sending a message, computer on a page) cannot be undone after sending, so it stops once per session and text (sent again, it goes through). Scripts run on a page (javascript_tool) are code and are not read. For Write and Edit, only the README and HTML of a public repository (found with `gh api` and remembered for a day; counted as public when it cannot be found). The dictionary is described under "Install" |
 
 ### turn-state
 
-ターンの終わりに、Claude が自分で続けるための裏の処理(完了を待つ shell・Monitor・subagent・予約した起動)が残っているかを、ファイルに書く。これを読むツール(plugin など)が、Claude が次にユーザーの入力を待っているのか、裏の処理の完了を待っているのかを見分ける。
+At the end of a turn, writes to a file whether background work that lets Claude continue on its own (shells and Monitors awaiting completion, subagents, scheduled wakeups) is still running. Tools that read it (plugins, for example) can tell whether Claude is waiting for the user's input or for background work to finish.
 
-- 置き場所: `$TURN_STATE_DIR`、なければ `~/.claude/state/turn-state`
-- `<session>.stop.json`(Stop のたびに書き直す): `{ "at": <ms>, "tasks": [...], "dropped": [...], "crons": <件数> }`
-  - `tasks`: Stop の入力の `background_tasks` のうち、自分で終わって Claude を起こしうるもの(`id`・`type`・`description`・`command`)
-  - `dropped`: 止めるまで動き続けるコマンド(開発用のサーバー、watch など)と、`ignore_task` に当たる処理(公開したページへのコメントの見張りなど、人の入力でしか Claude を起こさないもの)。終わることで Claude を起こさないので外す
-  - `crons`: `session_crons`(ScheduleWakeup・CronCreate・/loop)の件数
-- `<session>.monitors`: Monitor の task の ID。Stop の入力では Monitor も `type: "shell"` で載るので、PostToolUse の `tool_response.taskId` で覚えておき、`dropped` には入れない
+- Location: `$TURN_STATE_DIR`, else `~/.claude/state/turn-state`
+- `<session>.stop.json` (rewritten at every Stop): `{ "at": <ms>, "tasks": [...], "dropped": [...], "crons": <count> }`
+  - `tasks`: the `background_tasks` of the Stop input that can finish on their own and wake Claude (`id`, `type`, `description`, `command`)
+  - `dropped`: commands that run until stopped (development servers, watch, ...) and work matching `ignore_task` (such as watching a published page for comments, which only a person's input wakes). They do not wake Claude by finishing, so they are left out
+  - `crons`: the number of `session_crons` (ScheduleWakeup, CronCreate, /loop)
+- `<session>.monitors`: the task IDs of Monitors. The Stop input lists a Monitor as `type: "shell"`, so they are remembered from `tool_response.taskId` at PostToolUse and kept out of `dropped`
 
-止めるまで動き続けるコマンドと、数えない処理は、`~/.claude/hooks/turn-state.toml` に書く(規則のフォルダの外。規則のファイルは規則しか受け付けないため)。
+Commands that run until stopped, and work not to count, go in `~/.claude/hooks/turn-state.toml` (outside the rules folders, since rule files accept only rules).
 
 ```toml
 [[resident]]
-pattern = '(pnpm|npm|yarn|bun)(\s+run)?\s+(dev|start|serve|preview)(\s|$)'  # コマンドの頭から当てる
-except = ['\bbuild\b']                                                     # どれにも当たらないこと
+pattern = '(pnpm|npm|yarn|bun)(\s+run)?\s+(dev|start|serve|preview)(\s|$)'  # matched from the start of the command
+except = ['\bbuild\b']                                                     # none may match
 
 [[ignore_task]]
-type = 'monitor'                                  # background_tasks の type と同じ文字列
-description = '^live updates for artifact '       # description のどこかに当たる正規表現
+type = 'monitor'                                  # the same string as the type in background_tasks
+description = '^live updates for artifact '       # regular expression matching somewhere in the description
 ```
 
-コマンドは、引用の外の `&&`・`||`・`;`・`|`・改行で区切った部分ごとに照合する。各部分の先頭の `VAR=value`・`timeout <n>`・`nohup`・`exec`・`time`・`(`・`{` は外し、準備だけの部分(`cd`・`sleep`・`rm`・`echo` など)は見ない。照合は引用を含む書いたままの文字列に対して行う。
+A command is matched part by part, split at `&&`, `||`, `;`, `|` and newlines outside quotes. From the start of each part, `VAR=value`, `timeout <n>`, `nohup`, `exec`, `time`, `(` and `{` are removed, and parts that only prepare (`cd`, `sleep`, `rm`, `echo`, ...) are skipped. Matching is done against the string as written, quotes included.
 
-## コマンド
+## Commands
 
 ```sh
-yhooky hook                   # hook として動く: stdin に入力、stdout に答え
-yhooky explain                # stdin の入力に、各規則が何を返すかを JSON の行で出す
-yhooky check                  # 規則のファイルを読み、使えないものを報告する
-yhooky test <cases.toml>...   # 規則を例の入力で確かめる(書式は src/cases.rs)
-yhooky language-check <f>     # 過去の transcript で language-guard が止める回を出す
-yhooky show-file <path>...    # 各ファイルのフォルダを Explorer で開いてファイルを選び、最小化する(sendfile-to-ysidepaney が裏で起動する)
+yhooky hook                   # run as a hook: input on stdin, answer on stdout
+yhooky explain                # for the input on stdin, print what each rule returns, as JSON lines
+yhooky check                  # read the rule files and report the ones that cannot be used
+yhooky test <cases.toml>...   # check rules against example inputs (format in src/cases.rs)
+yhooky language-check <f>     # list the turns of past transcripts that language-guard would stop
+yhooky show-file <path>...    # open each file's folder in Explorer with the file selected, then minimize it (started by sendfile-to-ysidepaney)
 ```
 
 ## License
