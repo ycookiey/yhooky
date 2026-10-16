@@ -43,6 +43,18 @@ Register yhooky once per event under `hooks` in `settings.json`. With `args`, it
 }
 ```
 
+### Pointers to your documents
+
+Some built-in checks name a document for details in their messages (`bash.md`, `git.md`, `public-repo.md`, `external-japanese.md`). Set `YHOOKY_DOCS_DIR` to the folder that holds them, and the messages name `<dir>/<file>`; without it, the pointer is left out. A hook inherits Claude Code's environment, so the `env` block of `settings.json` can set it:
+
+```json
+{
+  "env": { "YHOOKY_DOCS_DIR": "~/.claude/docs" }
+}
+```
+
+The value is only written into messages, not opened, so `~` can stay as it is.
+
 ## Rules
 
 Rules are read from the `*.toml` files in these folders, in this order (files within a folder by name):

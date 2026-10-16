@@ -25,6 +25,7 @@ use std::process::{Command, Stdio};
 use serde::Deserialize;
 
 use super::post_push::runs_git_push;
+use crate::docs;
 use crate::input::Input;
 use crate::output::{Finding, Kind};
 use crate::public_repo::{git_config, github_repo, origin_url};
@@ -212,13 +213,14 @@ pub fn run(input: &Input) -> Vec<Finding> {
     } else {
         String::new()
     };
+    let see = docs::pointer("(", "git.md", " の「push 前に消す」)");
     vec![Finding::new(
         ID,
         Kind::Deny,
         format!(
             "push する commit に、個人を推測させうる語の候補(~/.claude/private-words.toml)がある: {}{rest}。\
              一度止めた。公開されうる repo に出してよいかを考え直す。出さないなら未 push の commit から消す\
-             (docs/git.md の「push 前に消す」)。問題なければ、同じ push を出し直せば通る。",
+             {see}。問題なければ、同じ push を出し直せば通る。",
             all[..all.len().min(LIMIT)].join("、")
         ),
     )]

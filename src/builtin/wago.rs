@@ -35,6 +35,7 @@ use std::sync::LazyLock;
 
 use regex::Regex;
 
+use crate::docs;
 use crate::input::Input;
 use crate::output::{Finding, Kind};
 use crate::text::windows_path;
@@ -210,9 +211,13 @@ pub fn run(input: &Input) -> Vec<Finding> {
     } else {
         String::new()
     };
+    // The rule numbers belong to the document, so they go with its pointer.
+    let axis = match docs::path("external-japanese.md") {
+        Some(path) => format!("規則1(具体的な語を選ぶ)とは別の軸({path} の規則19)。"),
+        None => "具体的な語を選ぶこととは別の軸。".to_string(),
+    };
     let note = format!(
-        "外に出る日本語の文に、熟語でない動詞(和語)がある: {}{rest}。熟語で言うほうが通るかを考え直す。置き換えは任意。\
-         規則1(具体的な語を選ぶ)とは別の軸(~/.claude/docs/external-japanese.md の規則19)。",
+        "外に出る日本語の文に、熟語でない動詞(和語)がある: {}{rest}。熟語で言うほうが通るかを考え直す。置き換えは任意。{axis}",
         words.join("・")
     );
     let stop = SENDING_TOOL.is_match(&input.tool()) && first_time(&input.text("session_id"), &text);

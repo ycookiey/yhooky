@@ -19,6 +19,7 @@ use regex::Regex;
 
 use super::post_push::runs;
 use super::push_check::push_dir;
+use crate::docs;
 use crate::input::Input;
 use crate::output::{Finding, Kind};
 use crate::public_repo::{git_config, github_public, is_public};
@@ -28,11 +29,11 @@ const ID: &str = "public-repo-writing-reminder";
 
 const WRITE_NOTE: &str = "この repo は public(誰でも読める)。書き物(README・コード内のコメント・PR・commit・package の説明)の言語は、\
      repo の README と既存の commit にそろえる。普通の public repo として標準的な形か、よく使われている同種の repo と比べて確かめる\
-     (今の repo の書き方は根拠にしない)。詳しくは ~/.claude/docs/public-repo.md。";
+     (今の repo の書き方は根拠にしない)。";
 
 const PUBLISH_NOTE: &str = "この repo は public(誰でも読める)。PR・Release の説明文は、後から非公開にできない。\
      言語は repo の README と既存の commit にそろえ、普通の public repo として標準的な形か、よく使われている同種の repo と比べて\
-     確かめてから出す(今の repo の書き方は根拠にしない)。詳しくは ~/.claude/docs/public-repo.md。";
+     確かめてから出す(今の repo の書き方は根拠にしない)。";
 
 static PUBLISH: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(^|[^[:alnum:]_-])gh[[:space:]]+(pr|release)[[:space:]]+create([[:space:]]|$)")
@@ -112,7 +113,8 @@ pub fn run(input: &Input) -> Vec<Finding> {
     if !first_time(&session, point, &repo) {
         return Vec::new();
     }
-    vec![Finding::new(ID, Kind::Context, note)]
+    let see = docs::pointer("詳しくは ", "public-repo.md", "。");
+    vec![Finding::new(ID, Kind::Context, format!("{note}{see}"))]
 }
 
 /// Whether a changed file is text for readers: a README, a changelog and

@@ -10,6 +10,7 @@
 //! `$HEREDOC_GUARD_STATE_DIR`, else `<temp>/claude-heredoc-guard`.
 
 use super::backslash::split_heredocs;
+use crate::docs;
 use crate::input::Input;
 use crate::once;
 use crate::output::{Finding, Kind};
@@ -46,13 +47,14 @@ pub fn run(input: &Input) -> Vec<Finding> {
     if !once::first_time(&dir, &format!("{session}\n{command}")) {
         return Vec::new();
     }
+    let see = docs::pointer("(", "bash.md", ")");
     vec![Finding::new(
         ID,
         Kind::Deny,
         format!(
             "heredoc の本文が長く({lines} 行)、単一引用符を含む。Bash ツールがコマンドを包む処理で \
              `unexpected EOF while looking for matching` になり、何も実行されないことがある。\
-             中身を Write ツールでファイルに書き、`python <file>` などで実行する(~/.claude/docs/bash.md)。\
+             中身を Write ツールでファイルに書き、`python <file>` などで実行する{see}。\
              このまま試すなら、同じコマンドを出し直せば通る。"
         ),
     )]

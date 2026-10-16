@@ -12,6 +12,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 pub mod builtin;
 pub mod cases;
+pub mod docs;
 pub mod explorer;
 pub mod input;
 pub mod once;

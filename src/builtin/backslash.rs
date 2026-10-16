@@ -24,6 +24,7 @@ use std::sync::LazyLock;
 
 use regex::Regex;
 
+use crate::docs;
 use crate::input::Input;
 use crate::once;
 use crate::output::{Finding, Kind};
@@ -245,6 +246,7 @@ pub fn run(input: &Input) -> Vec<Finding> {
     if places.contains(&Place::DoubleSpecial) {
         where_.push("二重引用の中で `$`・`` ` ``・`\"` の直前(縮んだ `\\` がその文字を打ち消す。`\"…\\\\$k\"` の `$k` が展開されない)");
     }
+    let see = docs::pointer("(", "bash.md", ")");
     let finding = if where_.is_empty()
         && INLINE_SCRIPT.is_match(&rest)
         && first_time(&input.text("session_id"), &command)
@@ -252,24 +254,28 @@ pub fn run(input: &Input) -> Vec<Finding> {
         Finding::new(
             ID,
             Kind::Deny,
-            "Bash ツールは実行の前に `\\\\` を `\\` 1 本に縮める(~/.claude/docs/bash.md)。\
-             インラインのスクリプト(node -e・python -c・sed・awk 等)の中の `\\\\` は、スクリプトが受け取る文字が変わる\
-             (置換文字列の `\\\\r\\\\n`、JS の `'\\\\n'` が壊れた)。中身を Write ツールでファイルに書いて実行する\
-             (node <file>・python <file>・sed -f <file>)。意図どおりなら同じコマンドを出し直せば通す。",
+            format!(
+                "Bash ツールは実行の前に `\\\\` を `\\` 1 本に縮める{see}。\
+                 インラインのスクリプト(node -e・python -c・sed・awk 等)の中の `\\\\` は、スクリプトが受け取る文字が変わる\
+                 (置換文字列の `\\\\r\\\\n`、JS の `'\\\\n'` が壊れた)。中身を Write ツールでファイルに書いて実行する\
+                 (node <file>・python <file>・sed -f <file>)。意図どおりなら同じコマンドを出し直せば通す。"
+            ),
         )
     } else if where_.is_empty() {
         Finding::new(
             ID,
             Kind::Context,
-            "このコマンドの `\\\\` は、実行の前に `\\` 1 本に縮んだ(~/.claude/docs/bash.md)。\
-             二重引用の中や引用の外なら bash が同じ結果にすることが多いが、出力が意図どおりか確かめる。",
+            format!(
+                "このコマンドの `\\\\` は、実行の前に `\\` 1 本に縮んだ{see}。\
+                 二重引用の中や引用の外なら bash が同じ結果にすることが多いが、出力が意図どおりか確かめる。"
+            ),
         )
     } else {
         Finding::new(
             ID,
             Kind::Deny,
             format!(
-                "Bash ツールは実行の前に `\\\\` を `\\` 1 本に縮める(~/.claude/docs/bash.md)。{}の `\\\\` は、\
+                "Bash ツールは実行の前に `\\\\` を `\\` 1 本に縮める{see}。{}の `\\\\` は、\
                  書いたとおりには渡らない。単一引用で書けるなら単一引用にする。でなければ、中身を Write ツールでファイルに書いてから、\
                  そのファイルを実行する・読ませる(スクリプトはファイルにして python <file>、データはファイルで渡す)。",
                 where_.join("・")

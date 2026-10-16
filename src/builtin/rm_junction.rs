@@ -13,6 +13,7 @@ use std::sync::LazyLock;
 
 use regex::Regex;
 
+use crate::docs;
 use crate::input::Input;
 use crate::output::{Finding, Kind};
 use crate::text::{any_line, matches, windows_path};
@@ -96,10 +97,15 @@ pub fn run(input: &Input) -> Vec<Finding> {
                 Path::new(&base).join(&target)
             };
             if is_real_dir(&path) && holds_node_modules(&path, 3) {
+                let see = docs::pointer(
+                    "詳細 ",
+                    "git.md",
+                    " の「部分 stage の単独検証と worktree の後片付け」",
+                );
                 let reason = format!(
                     "rm -r の対象 {target} は node_modules を含む。pnpm の node_modules の junction を rm がたどると、\
                      link: 依存の先(兄弟の checkout 等)まで消しうる。cmd //c \"rmdir /s /q C:\\\\path\" で消す\
-                     (junction はリンクだけ消える)。詳細 ~/.claude/docs/git.md の「部分 stage の単独検証と worktree の後片付け」"
+                     (junction はリンクだけ消える)。{see}"
                 );
                 return vec![Finding::new(ID, Kind::Deny, reason)];
             }

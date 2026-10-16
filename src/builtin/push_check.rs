@@ -21,6 +21,7 @@ use regex::Regex;
 
 use super::post_push::runs_git_push;
 use super::public_writing::writing_changed;
+use crate::docs;
 use crate::input::Input;
 use crate::output::{Finding, Kind};
 use crate::public_repo::is_public;
@@ -117,11 +118,15 @@ pub fn run(input: &Input) -> Vec<Finding> {
         // Without a place to remember it, a stop would come back every time.
         return Vec::new();
     }
-    let mut message = String::from(
+    let autocrlf = match docs::path("git.md") {
+        Some(path) => format!(" {path} の手順(コミットした中身で確かめる)"),
+        None => "、コミットした中身で確かめる".to_string(),
+    };
+    let mut message = format!(
         "push 前の確認(この repo のこの commit で初回の push なので一度止めた。済んだら同じコマンドを出し直せば通る): \
          このrepoのCI workflowの run: 行(package.jsonのscript: typecheck / lint / format:check / test / build 等)をそのまま回したか。\
          toolの単体呼び出しで代用しない(例: eslint単体は同じlint scriptの前段oxlintを飛ばす)。\
-         Windowsのautocrlfでformat:checkが落ちる場合は ~/.claude/docs/git.md の手順(コミットした中身で確かめる)。\
+         Windowsのautocrlfでformat:checkが落ちる場合は{autocrlf}。\
          push 先の決まり(他の session への知らせ・ユーザーの了承)も満たしたか。(push後の作業は post-push-reminder が push の直後に知らせる)",
     );
     // `repo` is the top level and HEAD, one per line.
@@ -129,11 +134,19 @@ pub fn run(input: &Input) -> Vec<Finding> {
         && is_public(Path::new(&windows_path(root)))
         && writing_changed(root)
     {
-        message.push_str(PUBLIC_REVIEW);
+        message.push_str(&public_review());
     }
     vec![Finding::new(ID, Kind::Deny, message)]
 }
 
-const PUBLIC_REVIEW: &str = "\nこの repo は public で、push する範囲に書き物の変更がある。push する範囲の書き物の変更を、\
-     レビュー用の subagent に渡して ~/.claude/docs/public-repo.md の観点(言語がそろっているか・普通の public repo として標準的な形か・\
-     個人の具体を書いていないか)でレビューし、指摘を直してから出し直す。対象は README・md・コード内のコメント・package の説明・commit のメッセージ。";
+fn public_review() -> String {
+    let aspects = match docs::path("public-repo.md") {
+        Some(path) => format!(" {path} の観点"),
+        None => "、次の観点".to_string(),
+    };
+    format!(
+        "\nこの repo は public で、push する範囲に書き物の変更がある。push する範囲の書き物の変更を、\
+         レビュー用の subagent に渡して{aspects}(言語がそろっているか・普通の public repo として標準的な形か・\
+         個人の具体を書いていないか)でレビューし、指摘を直してから出し直す。対象は README・md・コード内のコメント・package の説明・commit のメッセージ。"
+    )
+}
