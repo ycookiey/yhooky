@@ -34,13 +34,19 @@ static RUNS_ARG: LazyLock<Regex> =
 /// handed to a shell (`bash -c "..."`, `cmd /c "..."`, `pwsh -Command
 /// "..."`). Heredoc bodies still count, as they may be run.
 pub fn runs_git_push(command: &str) -> bool {
+    runs(&GIT_PUSH, command)
+}
+
+/// Whether `command` runs what `re` matches, with quoted text read as data
+/// in the same way as [`runs_git_push`].
+pub fn runs(re: &Regex, command: &str) -> bool {
     let mut masked = String::with_capacity(command.len());
     let mut last = 0;
     for quoted in QUOTED.find_iter(command) {
         let before = &command[last..quoted.start()];
         masked.push_str(before);
         let inner = &quoted.as_str()[1..quoted.as_str().len() - 1];
-        if RUNS_ARG.is_match(&command[..quoted.start()]) && runs_git_push(inner) {
+        if RUNS_ARG.is_match(&command[..quoted.start()]) && runs(re, inner) {
             return true;
         }
         // Same length, no line breaks: lines keep their places.
@@ -53,7 +59,7 @@ pub fn runs_git_push(command: &str) -> bool {
         last = quoted.end();
     }
     masked.push_str(&command[last..]);
-    any_line(&GIT_PUSH, &masked)
+    any_line(re, &masked)
 }
 
 /// Only a push that went through prints `old..new  src -> dst`.

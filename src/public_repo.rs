@@ -117,7 +117,7 @@ fn ask_github(repo: &str) -> Option<bool> {
 
 /// Whether `repo` (`owner/repo` on GitHub) is public, from the cache when
 /// it is fresh enough.
-fn github_public(repo: &str) -> bool {
+pub fn github_public(repo: &str) -> bool {
     let hash = sha1_smol::Sha1::from(repo.as_bytes()).digest().to_string();
     let file = cache_dir().join(&hash[..16]);
     if let (Ok(text), Ok(meta)) = (fs::read_to_string(&file), fs::metadata(&file)) {
