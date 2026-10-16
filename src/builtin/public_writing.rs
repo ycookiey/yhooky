@@ -27,11 +27,14 @@ use crate::text::{matches, strip_quote, windows_path};
 
 const ID: &str = "public-repo-writing-reminder";
 
-const WRITE_NOTE: &str = "この repo は public(誰でも読める)。書き物(README・コード内のコメント・PR・commit・package の説明)の言語は、\
+const WRITE_NOTE: &str = "この repo は public(誰でも読める)。他人に使ってもらう製品として扱い、想定する利用者と、利用者への約束\
+     (できること・対応環境・導入と削除・制限)を先に決める。書き物(README・コード内のコメント・PR・commit・package の説明)は\
+     想定する利用者の立場で書き、書き手の環境・作業の経緯・会話の中だけの呼び名を前提にしない。書き物の言語は、\
      repo の README と既存の commit にそろえる。普通の public repo として標準的な形か、よく使われている同種の repo と比べて確かめる\
      (今の repo の書き方は根拠にしない)。";
 
 const PUBLISH_NOTE: &str = "この repo は public(誰でも読める)。PR・Release の説明文は、後から非公開にできない。\
+     説明文を想定する利用者の立場で読み、書き手の環境・作業の経緯・会話の中だけの呼び名を前提にしていないかを確かめる。\
      言語は repo の README と既存の commit にそろえ、普通の public repo として標準的な形か、よく使われている同種の repo と比べて\
      確かめてから出す(今の repo の書き方は根拠にしない)。";
 

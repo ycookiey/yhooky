@@ -146,7 +146,8 @@ fn public_review() -> String {
     };
     format!(
         "\nこの repo は public で、push する範囲に書き物の変更がある。push する範囲の書き物の変更を、\
-         レビュー用の subagent に渡して{aspects}(言語がそろっているか・普通の public repo として標準的な形か・\
+         レビュー用の subagent に渡し、書き手を知らない想定利用者として読ませて{aspects}(書き手の環境・作業の経緯・\
+         会話の中だけの呼び名を前提にしていないか・言語がそろっているか・普通の public repo として標準的な形か・\
          個人の具体を書いていないか)でレビューし、指摘を直してから出し直す。対象は README・md・コード内のコメント・package の説明・commit のメッセージ。"
     )
 }
