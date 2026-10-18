@@ -13,6 +13,7 @@ pub mod head_trunc;
 pub mod heredoc_size;
 pub mod label;
 pub mod language;
+pub mod phrases;
 pub mod post_push;
 pub mod private_words;
 pub mod public_writing;

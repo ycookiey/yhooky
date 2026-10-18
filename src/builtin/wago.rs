@@ -2,26 +2,32 @@
 //!
 //! In Japanese written for other people, notes the verbs that are not
 //! Sino-Japanese compounds (和語の動詞: 要る・確かめる・足す), so that saying
-//! them with a compound (必要・確認・追加) can be weighed. Replacing them is
-//! not asked for. It looks at:
+//! them with a compound (必要・確認・追加) can be weighed, and phrases that
+//! make the text read as machine-written or translated from English
+//! (phrases.rs). Replacing them is not asked for. It looks at:
 //! - text typed into a page or sent as a message (form_input and computer
-//!   of claude-in-chrome, beeper's send_message), and
+//!   of claude-in-chrome, beeper's send_message),
 //! - text written with Write or Edit into a README or an HTML file of a
 //!   public repository (src/public_repo.rs). Documents for agents (docs,
-//!   CLAUDE.md, skill definitions) are left out.
+//!   CLAUDE.md, skill definitions) are left out, and
+//! - the title and body of a PR or a release that gh creates or edits in a
+//!   public repository: the title, body and notes given in the command
+//!   (inline or in a heredoc), and the files it names with `--body-file`,
+//!   `--notes-file` or `-F`.
 //!
 //! The text is split into words with UniDic (lindera); a word counts when
 //! its part of speech is 動詞 and its word type (語種) is 和, unless its
 //! lexeme is a helper that grammar asks for (為る in 確認する, 有る, 居る,
 //! 置く, 因る in によって). The dictionary is read only when a text gets
 //! that far: from `$YHOOKY_UNIDIC_DIR`, else the `unidic` folder beside the
-//! executable (built by examples/build_unidic.rs). Without it nothing is
-//! said.
+//! executable (built by examples/build_unidic.rs). Without it no verbs are
+//! noted; the phrases still are.
 //!
 //! A note reaches Claude with the tool's result, after a message has gone
-//! out, so the tools that may send (a message, a click or a key in a page)
-//! are stopped once per session and text instead; the same call sent again
-//! goes through. Which were stopped is kept as empty files in
+//! out or a PR has been made, so the calls that may send or publish (a
+//! message, a click or a key in a page, gh) are stopped once per session
+//! and text instead; the same call sent again goes through. Which were
+//! stopped is kept as empty files in
 //! `$WAGO_GUARD_STATE_DIR`, else `<temp>/claude-wago-verb`. Typing into a
 //! field (form_input) and writing a file can still be revised, so there it
 //! only notes. A script run in a page (javascript_tool) is code, mostly
@@ -35,6 +41,11 @@ use std::sync::LazyLock;
 
 use regex::Regex;
 
+use super::backslash::split_heredocs;
+use super::phrases;
+use super::post_push::runs;
+use super::public_writing::public_repo_of_command;
+use super::push_check::push_dir;
 use crate::docs;
 use crate::input::Input;
 use crate::output::{Finding, Kind};
@@ -52,6 +63,22 @@ static SENDING_TOOL: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^(mcp__claude-in-chrome__computer|mcp__beeper__send_message)$").unwrap()
 });
 const TYPING_FIELDS: [&str; 2] = ["tool_input.value", "tool_input.text"];
+
+/// gh commands that publish text: a PR or a release, made or edited.
+static PUBLISH: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(^|[^[:alnum:]_-])gh[[:space:]]+(pr|release)[[:space:]]+(create|edit)([[:space:]]|$)",
+    )
+    .unwrap()
+});
+/// A title, body or notes given to such a command, inline or as a file.
+static TEXT_FLAG: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r#"(^|\s)(--title|-t|--body|-b|--notes|-n|--body-file|--notes-file|-F)(=|\s+)("(?:[^"\\]|\\.)*"|'[^']*'|[^\s;|&)]+)"#,
+    )
+    .unwrap()
+});
+const FILE_FLAGS: [&str; 3] = ["--body-file", "--notes-file", "-F"];
 
 /// Lexemes left out: helpers that grammar asks for, not word choices.
 /// 成る・出来る・言う are counted.
@@ -160,12 +187,75 @@ fn analyze(text: &str) -> Option<Vec<String>> {
     })))
 }
 
+/// What a gh command publishes, each piece on lines of its own: the
+/// heredoc bodies in the command (a body is often given as `--body
+/// "$(cat <<'EOF' ...)"`), the title, body and notes given after `gh`, and
+/// the files named there (relative ones from `dir`; `-` is standard input
+/// and not read).
+fn published_text(command: &str, dir: &Path) -> String {
+    let (rest, mut pieces) = split_heredocs(command);
+    let from = PUBLISH.find(&rest).map_or(0, |m| m.start());
+    for caps in TEXT_FLAG.captures_iter(&rest[from..]) {
+        let value = &caps[4];
+        let value = match value.chars().next() {
+            Some('"') => value[1..value.len() - 1].replace("\\\"", "\""),
+            Some('\'') => value[1..value.len() - 1].to_string(),
+            _ => value.to_string(),
+        };
+        if !FILE_FLAGS.contains(&&caps[2]) {
+            pieces.push(value);
+            continue;
+        }
+        if value == "-" {
+            continue;
+        }
+        let path = PathBuf::from(windows_path(&value));
+        let path = if path.is_absolute() {
+            path
+        } else {
+            dir.join(path)
+        };
+        if let Ok(body) = std::fs::read_to_string(&path) {
+            pieces.push(body);
+        }
+    }
+    pieces.join("\n")
+}
+
+/// Text this call puts out for other people.
+struct Outgoing {
+    text: String,
+    /// Whether the call may send or publish it, past revising.
+    sends: bool,
+}
+
 /// The text to look at, if this call writes Japanese for other people.
-fn outgoing_text(input: &Input) -> Option<String> {
+fn outgoing_text(input: &Input) -> Option<Outgoing> {
     let tool = input.tool();
     if TYPING_TOOL.is_match(&tool) {
         let fields: Vec<String> = TYPING_FIELDS.iter().map(|f| f.to_string()).collect();
-        return Some(input.first_text(&fields));
+        return Some(Outgoing {
+            text: input.first_text(&fields),
+            sends: SENDING_TOOL.is_match(&tool),
+        });
+    }
+    if tool == "Bash" || tool == "PowerShell" {
+        let command = input.command();
+        if !runs(&PUBLISH, &command) {
+            return None;
+        }
+        let cwd = input.cwd();
+        let dir = windows_path(&push_dir(&command, &cwd));
+        let text = published_text(&command, Path::new(&dir));
+        if !JAPANESE.is_match(&text) {
+            return None;
+        }
+        // Looked up only now: it may run `gh`.
+        public_repo_of_command(&command, &cwd)?;
+        return Some(Outgoing {
+            text: prose("body.md", &text),
+            sends: true,
+        });
     }
     if tool != "Write" && tool != "Edit" {
         return None;
@@ -185,24 +275,17 @@ fn outgoing_text(input: &Input) -> Option<String> {
     if !crate::public_repo::is_public(Path::new(&windows_path(&path.replace('\\', "/")))) {
         return None;
     }
-    Some(prose(&path, &text))
+    Some(Outgoing {
+        text: prose(&path, &text),
+        sends: false,
+    })
 }
 
-pub fn run(input: &Input) -> Vec<Finding> {
-    if input.event() != "PreToolUse" {
-        return Vec::new();
-    }
-    let Some(text) = outgoing_text(input) else {
-        return Vec::new();
-    };
-    if !JAPANESE.is_match(&text) {
-        return Vec::new();
-    }
-    let Some(mut words) = analyze(&text) else {
-        return Vec::new();
-    };
+/// The note on native verbs, if any are found.
+fn verb_note(text: &str) -> Option<String> {
+    let mut words = analyze(text)?;
     if words.is_empty() {
-        return Vec::new();
+        return None;
     }
     let more = words.len().saturating_sub(LIMIT);
     words.truncate(LIMIT);
@@ -216,17 +299,49 @@ pub fn run(input: &Input) -> Vec<Finding> {
         Some(path) => format!("規則1(具体的な語を選ぶ)とは別の軸({path} の規則19)。"),
         None => "具体的な語を選ぶこととは別の軸。".to_string(),
     };
-    let note = format!(
+    Some(format!(
         "外に出る日本語の文に、熟語でない動詞(和語)がある: {}{rest}。熟語で言うほうが通るかを考え直す。置き換えは任意。{axis}",
         words.join("・")
-    );
-    let stop = SENDING_TOOL.is_match(&input.tool()) && first_time(&input.text("session_id"), &text);
+    ))
+}
+
+/// The note on phrases, if any are found.
+fn phrase_note(text: &str) -> Option<String> {
+    let found = phrases::notes(text);
+    if found.is_empty() {
+        return None;
+    }
+    let lines: String = found.iter().map(|line| format!("\n- {line}")).collect();
+    Some(format!(
+        "外に出る日本語の文に、見直す言い回しがある。直すかは文脈で決める。{lines}"
+    ))
+}
+
+pub fn run(input: &Input) -> Vec<Finding> {
+    if input.event() != "PreToolUse" {
+        return Vec::new();
+    }
+    let Some(Outgoing { text, sends }) = outgoing_text(input) else {
+        return Vec::new();
+    };
+    if !JAPANESE.is_match(&text) {
+        return Vec::new();
+    }
+    let notes: Vec<String> = [verb_note(&text), phrase_note(&text)]
+        .into_iter()
+        .flatten()
+        .collect();
+    if notes.is_empty() {
+        return Vec::new();
+    }
+    let note = notes.join("\n");
+    let stop = sends && first_time(&input.text("session_id"), &text);
     let finding = if stop {
         Finding::new(
             ID,
             Kind::Deny,
             format!(
-                "{note}送ると取り消せないので、送る前に一度止めた。このまま送るなら、同じ操作を出し直せば通る。"
+                "{note}\n送ったり公開したりした文は、後で直しても相手に届いたものが残るので、その前に一度止めた。このまま進めるなら、同じ操作を出し直せば通る。"
             ),
         )
     } else {
@@ -319,22 +434,62 @@ mod tests {
         assert!(!TYPING_TOOL.is_match("mcp__claude-in-chrome__navigate"));
     }
 
-    /// Runs only with a dictionary, as below.
+    #[test]
+    fn reads_what_gh_publishes() {
+        for command in [
+            "gh pr create --title t --body b",
+            "cd x && gh release edit v1 --notes-file n.md",
+            "gh pr edit 3 -F body.md",
+        ] {
+            assert!(runs(&PUBLISH, command), "{command}");
+        }
+        for command in ["gh pr view 3", "gh release list", "echo 'gh pr create'"] {
+            assert!(!runs(&PUBLISH, command), "{command}");
+        }
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("body.md"), "本文の文。").unwrap();
+        std::fs::write(dir.path().join("n.md"), "ノートの文。").unwrap();
+        let text = published_text(
+            "grep -F x y && gh pr create --title 題 --body-file body.md && gh release create v1 --notes-file=\"n.md\" -F -",
+            dir.path(),
+        );
+        assert_eq!(text, "題\n本文の文。\nノートの文。");
+        let text = published_text(
+            "gh pr create -t \"重要なのは速さ\" -b '結論から言うと、動く。'",
+            dir.path(),
+        );
+        assert_eq!(text, "重要なのは速さ\n結論から言うと、動く。");
+        let text = published_text(
+            "gh pr create --title \"題 \\\"a\\\"\" --body \"$(cat <<'EOF'\n本文に \"引用\" がある。\nEOF\n)\"",
+            dir.path(),
+        );
+        assert!(text.contains("本文に \"引用\" がある。"), "{text}");
+        assert!(text.contains("題 \"a\""), "{text}");
+        let notes = phrases::notes(&published_text(
+            "gh pr create --title \"重要なのは速さ\" --body \"結論から言うと、動く。いかがでしたか\"",
+            dir.path(),
+        ));
+        assert!(
+            notes
+                .join("")
+                .contains("重要なのは・結論から言うと・いかがでしたでしょうか"),
+            "{notes:?}"
+        );
+    }
+
+    /// The phrase is found without a dictionary, the verb only with one.
     #[test]
     fn stops_a_send_once() {
-        if std::env::var("YHOOKY_UNIDIC_DIR").is_err() || dictionary_dir().is_none() {
-            eprintln!("skipped: set YHOOKY_UNIDIC_DIR to run");
-            return;
-        }
         let dir = tempfile::tempdir().unwrap();
         // SAFETY: only this test reads the variable.
         unsafe { std::env::set_var("WAGO_GUARD_STATE_DIR", dir.path()) };
         let call = |tool: &str| {
+            let text = "結果を確かめる。いかがでしたでしょうか。";
             let raw = serde_json::json!({
                 "hook_event_name": "PreToolUse",
                 "tool_name": tool,
                 "session_id": "s",
-                "tool_input": { "text": "結果を確かめる。", "value": "結果を確かめる。" },
+                "tool_input": { "text": text, "value": text },
             });
             run(&Input::parse(&raw.to_string()).unwrap())
         };

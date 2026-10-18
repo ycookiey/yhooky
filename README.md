@@ -20,7 +20,7 @@ cargo install --path .
 
 The checks that need to know whether a repository is public (`public-repo-writing-reminder`, `push-check-reminder`, `wago-verb-reminder`) use git and an authenticated GitHub CLI (`gh`).
 
-The built-in check `wago-verb-reminder` uses a dictionary (a folder of about 120 MB built from UniDic). Put it in a `unidic` folder next to the executable, or in the folder named by the environment variable `YHOOKY_UNIDIC_DIR`. Without it, this check does nothing. To build it:
+The built-in check `wago-verb-reminder` uses a dictionary (a folder of about 120 MB built from UniDic). Put it in a `unidic` folder next to the executable, or in the folder named by the environment variable `YHOOKY_UNIDIC_DIR`. Without it, this check lists no verbs, but still notes the phrases. To build it:
 
 ```sh
 # From an unpacked unidic-mecab-2.1.2. context_id_freq.txt is in the lindera-unidic crate (optional).
@@ -114,7 +114,7 @@ When several rules match, the call is stopped if any of them stops it, with the 
 | `label-guard` | Stop | Stops headings labeled with Greek letters or Roman numerals |
 | `language-guard` | Stop | Stops when the last reply is mostly English |
 | `turn-state` | Stop, PostToolUse (Monitor) | At the end of a turn, writes the background work still running to `<session>.stop.json` (see "turn-state" below). Returns nothing |
-| `wago-verb-reminder` | PreToolUse (input to a browser page, sending a message, Write, Edit) | In Japanese text that goes out, lists verbs that are not Sino-Japanese compounds (native Japanese verbs). Auxiliary words (為る, 有る, 居る, 置く, 因る) are left out. Actions that may send something (sending a message, computer on a page) cannot be undone after sending, so it stops once per session and text (sent again, it goes through). Scripts run on a page (javascript_tool) are code and are not read. For Write and Edit, only the README and HTML of a public repository (found with `gh api` and remembered for a day; counted as public when it cannot be found). The dictionary is described under "Install" |
+| `wago-verb-reminder` | PreToolUse (input to a browser page, sending a message, Write, Edit, Bash, PowerShell) | In Japanese text that goes out, lists verbs that are not Sino-Japanese compounds (native Japanese verbs). Auxiliary words (為る, 有る, 居る, 置く, 因る) are left out. It also notes phrases that make the text read as machine-written or translated from English (translated terms and metaphors, words that seldom say anything, set phrases), with the cases where each may stay; quoted phrases (「…」, `>`) are not noted. The phrase patterns come from [yomiyasu](https://github.com/nanaism/yomiyasu) (see `THIRD-PARTY-NOTICES.md`). Actions that may send or publish something (sending a message, computer on a page, `gh pr create`/`edit` and `gh release create`/`edit`) cannot be taken back once seen, so it stops once per session and text (sent again, it goes through). Scripts run on a page (javascript_tool) are code and are not read. For Write and Edit, only the README and HTML of a public repository (found with `gh api` and remembered for a day; counted as public when it cannot be found). For gh, only a public repository (the one named by `-R`/`--repo`, else where the command runs); it reads the title, body and notes given in the command (inline or in a heredoc) and the files named by `--body-file`, `--notes-file` or `-F`. The dictionary is described under "Install" |
 
 ### turn-state
 
@@ -155,3 +155,5 @@ yhooky show-file <path>...    # open each file's folder in Explorer with the fil
 ## License
 
 MIT OR Apache-2.0
+
+Parts taken from other projects keep their own licenses: see `THIRD-PARTY-NOTICES.md`.

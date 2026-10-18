@@ -76,6 +76,15 @@ fn public_repo_of(path: &Path) -> Option<String> {
     is_public(path).then(|| config.to_string_lossy().into_owned())
 }
 
+/// The public repository a gh command acts on: the one named by
+/// `-R`/`--repo`, else the one the command works in.
+pub(crate) fn public_repo_of_command(command: &str, cwd: &str) -> Option<String> {
+    match repo_flag(command) {
+        Some(name) => github_public(&name).then(|| format!("github:{name}")),
+        None => public_repo_of(Path::new(&windows_path(&push_dir(command, cwd)))),
+    }
+}
+
 pub fn run(input: &Input) -> Vec<Finding> {
     if input.event() != "PreToolUse" {
         return Vec::new();
@@ -99,14 +108,7 @@ pub fn run(input: &Input) -> Vec<Finding> {
             if !runs(&PUBLISH, &command) {
                 return Vec::new();
             }
-            let repo = match repo_flag(&command) {
-                Some(name) => github_public(&name).then(|| format!("github:{name}")),
-                None => {
-                    let dir = windows_path(&push_dir(&command, &input.cwd()));
-                    public_repo_of(Path::new(&dir))
-                }
-            };
-            let Some(repo) = repo else {
+            let Some(repo) = public_repo_of_command(&command, &input.cwd()) else {
                 return Vec::new();
             };
             ("publish", repo, PUBLISH_NOTE)
