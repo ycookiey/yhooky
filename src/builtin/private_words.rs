@@ -25,6 +25,7 @@ use std::process::{Command, Stdio};
 use serde::Deserialize;
 
 use super::post_push::runs_git_push;
+use super::push_check::held_back;
 use crate::docs;
 use crate::input::Input;
 use crate::output::{Finding, Kind};
@@ -218,9 +219,10 @@ pub fn run(input: &Input) -> Vec<Finding> {
         ID,
         Kind::Deny,
         format!(
-            "push する commit に、個人を推測させうる語の候補({})がある: {}{rest}。\
+            "{}push する commit に、個人を推測させうる語の候補({})がある: {}{rest}。\
              一度止めた。公開されうる repo に出してよいかを考え直す。出さないなら未 push の commit から消す\
              {see}。問題なければ、同じ push を出し直せば通る。",
+            held_back(&command),
             file.display(),
             all[..all.len().min(LIMIT)].join("、")
         ),

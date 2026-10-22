@@ -148,6 +148,15 @@ impl Resident {
 
 /// The parts of `command` that run a program, as the module doc says.
 pub fn heads(command: &str) -> Vec<&str> {
+    all_heads(command)
+        .into_iter()
+        .filter(|head| !SETUP.is_match(head))
+        .collect()
+}
+
+/// The parts of `command`, split and stripped as for [`heads`], with the
+/// parts that only set up kept.
+pub fn all_heads(command: &str) -> Vec<&str> {
     // Quoted text keeps its length so the separators found in the masked
     // copy cut the command at the same places.
     let masked = QUOTED.replace_all(command, |c: &regex::Captures| "x".repeat(c[0].len()));
@@ -165,7 +174,7 @@ pub fn heads(command: &str) -> Vec<&str> {
             while let Some(m) = PREFIX.find(head) {
                 head = head[m.end()..].trim_start();
             }
-            (!head.is_empty() && !SETUP.is_match(head)).then_some(head)
+            (!head.is_empty()).then_some(head)
         })
         .collect()
 }

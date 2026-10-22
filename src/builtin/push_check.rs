@@ -21,6 +21,7 @@ use regex::Regex;
 
 use super::post_push::runs_git_push;
 use super::public_writing::writing_changed;
+use super::turn_state::all_heads;
 use crate::docs;
 use crate::input::Input;
 use crate::output::{Finding, Kind};
@@ -60,6 +61,32 @@ pub(crate) fn push_dir(command: &str, cwd: &str) -> String {
     } else {
         format!("{cwd}/{dir}")
     }
+}
+
+/// Commands that change nothing a push leaves behind: changing folders,
+/// and filtering the output.
+static NOT_HELD: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"^(cd|Set-Location|pushd|tail|head|grep|cat|tee|less|more|sed|awk|wc|sort|uniq|Select-Object|Select-String|Out-String)(\s|$)").unwrap()
+});
+
+/// What a stop of `command` holds back besides the push, as a sentence to
+/// put first in the message, when it runs other commands too (`git add …
+/// && git commit … && git push`). A message that speaks only of the push
+/// lets the commit be taken as made: the push alone is sent again and goes
+/// through with nothing new, or the work goes on without the commit.
+/// Changing folders (`cd`) and filtering the output (`git push 2>&1 |
+/// tail -3`) do not count; other setup (`rm`, `mkdir`) does, as it did not
+/// run either.
+pub(crate) fn held_back(command: &str) -> String {
+    if all_heads(command)
+        .iter()
+        .all(|head| runs_git_push(head) || NOT_HELD.is_match(head))
+    {
+        return String::new();
+    }
+    "このコマンドの全体を止めた。`&&` や `;` でつないだほかのコマンド(add・commit など)も実行されていない。\
+     出し直す前に `git status` と `git log -1` で確かめる。"
+        .to_string()
 }
 
 fn state_dir() -> PathBuf {
@@ -123,11 +150,12 @@ pub fn run(input: &Input) -> Vec<Finding> {
         None => "、コミットした中身で確かめる".to_string(),
     };
     let mut message = format!(
-        "push 前の確認(この repo のこの commit で初回の push なので一度止めた。済んだら同じコマンドを出し直せば通る): \
+        "{}push 前の確認(この repo のこの commit で初回の push なので一度止めた。済んだら同じコマンドを出し直せば通る): \
          このrepoのCI workflowの run: 行(package.jsonのscript: typecheck / lint / format:check / test / build 等)をそのまま回したか。\
          toolの単体呼び出しで代用しない(例: eslint単体は同じlint scriptの前段oxlintを飛ばす)。\
          Windowsのautocrlfでformat:checkが落ちる場合は{autocrlf}。\
          push 先の決まり(他の session への知らせ・ユーザーの了承)も満たしたか。(push後の作業は post-push-reminder が push の直後に知らせる)",
+        held_back(&command)
     );
     // `repo` is the top level and HEAD, one per line.
     if let Some(root) = repo.as_deref().and_then(|r| r.lines().next())
@@ -150,4 +178,30 @@ fn public_review() -> String {
          会話の中だけの呼び名を前提にしていないか・言語がそろっているか・普通の public repo として標準的な形か・\
          個人の具体を書いていないか)でレビューし、指摘を直してから出し直す。対象は README・md・コード内のコメント・package の説明・commit のメッセージ。"
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn says_what_else_a_stop_holds_back() {
+        for command in [
+            "git add a.rs && git commit -m 'x' && git push origin main",
+            "git commit -am x; git push",
+            "git push && gh pr create --fill",
+            "rm -r dist && git push",
+        ] {
+            assert!(!held_back(command).is_empty(), "{command}");
+        }
+        for command in [
+            "git push origin main",
+            "cd /c/x && git push",
+            "git -C /c/x push --force-with-lease",
+            "git push 2>&1",
+            "git push 2>&1 | tail -3",
+        ] {
+            assert_eq!(held_back(command), "", "{command}");
+        }
+    }
 }
