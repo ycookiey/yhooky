@@ -25,12 +25,11 @@ use std::process::{Command, Stdio};
 use serde::Deserialize;
 
 use super::post_push::runs_git_push;
-use super::push_check::held_back;
+use super::push_check::{held_back, push_dir};
 use crate::docs;
 use crate::input::Input;
 use crate::output::{Finding, Kind};
 use crate::public_repo::{git_config, github_repo, origin_url};
-use crate::repo;
 use crate::text::windows_path;
 
 const ID: &str = "private-word-guard";
@@ -157,7 +156,7 @@ pub fn run(input: &Input) -> Vec<Finding> {
     if list.words.iter().all(|w| w.trim().is_empty()) {
         return Vec::new();
     }
-    let dir = windows_path(&repo::dir(input, repo::First::GitC));
+    let dir = windows_path(&push_dir(&command, &input.cwd()));
     let (url, name) = origin(Path::new(&dir)).unwrap_or_default();
     let listed = |s: &String| {
         (!url.is_empty() && s.eq_ignore_ascii_case(&url))

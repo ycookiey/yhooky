@@ -18,7 +18,6 @@ use std::sync::LazyLock;
 use regex::Regex;
 
 use super::post_push::runs;
-use super::push_check::push_dir;
 use crate::docs;
 use crate::input::Input;
 use crate::output::{Finding, Kind};
@@ -76,12 +75,21 @@ fn public_repo_of(path: &Path) -> Option<String> {
     is_public(path).then(|| config.to_string_lossy().into_owned())
 }
 
+static GH_PR_OR_RELEASE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^gh\s+(pr|release)\s").unwrap());
+
+/// The folder the first `gh pr …` or `gh release …` of the command runs
+/// in (src/repo.rs).
+pub(crate) fn gh_dir(command: &str, cwd: &str) -> String {
+    crate::repo::work_dir(command, cwd, |head| GH_PR_OR_RELEASE.is_match(head))
+}
+
 /// The public repository a gh command acts on: the one named by
 /// `-R`/`--repo`, else the one the command works in.
 pub(crate) fn public_repo_of_command(command: &str, cwd: &str) -> Option<String> {
     match repo_flag(command) {
         Some(name) => github_public(&name).then(|| format!("github:{name}")),
-        None => public_repo_of(Path::new(&windows_path(&push_dir(command, cwd)))),
+        None => public_repo_of(Path::new(&windows_path(&gh_dir(command, cwd)))),
     }
 }
 

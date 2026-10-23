@@ -44,8 +44,7 @@ use regex::Regex;
 use super::backslash::split_heredocs;
 use super::phrases;
 use super::post_push::runs;
-use super::public_writing::public_repo_of_command;
-use super::push_check::push_dir;
+use super::public_writing::{gh_dir, public_repo_of_command};
 use crate::docs;
 use crate::input::Input;
 use crate::output::{Finding, Kind};
@@ -245,7 +244,7 @@ fn outgoing_text(input: &Input) -> Option<Outgoing> {
             return None;
         }
         let cwd = input.cwd();
-        let dir = windows_path(&push_dir(&command, &cwd));
+        let dir = windows_path(&gh_dir(&command, &cwd));
         let text = published_text(&command, Path::new(&dir));
         if !JAPANESE.is_match(&text) {
             return None;

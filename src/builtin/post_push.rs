@@ -88,7 +88,7 @@ pub fn run(input: &Input) -> Vec<Finding> {
     let Some(commit) = NEW_COMMIT.captures(last).map(|c| c[1].to_string()) else {
         return Vec::new();
     };
-    let dir = repo::dir(input, repo::First::Cd);
+    let dir = repo::work_dir(&command, &input.cwd(), runs_git_push);
     let base = windows_path(&dir);
     let scripts: Vec<String> = SCRIPTS
         .iter()

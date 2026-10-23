@@ -33,41 +33,14 @@ use crate::docs;
 use crate::input::Input;
 use crate::output::{Finding, Kind};
 use crate::public_repo::is_public;
-use crate::text::{matches, strip_quote, windows_path};
+use crate::text::windows_path;
 
 const ID: &str = "push-check-reminder";
 
-static CD: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(^|[;&|[:space:]])cd[[:space:]]+[^;&|[:space:]]+").unwrap());
-static CD_PREFIX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^.*cd[[:space:]]+").unwrap());
-static GIT_C: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"git[[:space:]]+-C[[:space:]]+[^[:space:]]+").unwrap());
-static GIT_C_PREFIX: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^git[[:space:]]+-C[[:space:]]+").unwrap());
-
-/// The folder pushed from: the last `cd <dir>`, else the last
-/// `git -C <dir>`, relative to the hook's cwd; else the cwd.
+/// The folder pushed from: where the first `git push` of the command runs
+/// (src/repo.rs).
 pub(crate) fn push_dir(command: &str, cwd: &str) -> String {
-    let found = matches(&CD, command)
-        .pop()
-        .map(|m| CD_PREFIX.replace(m, "").into_owned())
-        .or_else(|| {
-            matches(&GIT_C, command)
-                .pop()
-                .map(|m| GIT_C_PREFIX.replace(m, "").into_owned())
-        })
-        .unwrap_or_default();
-    let dir = strip_quote(&found, '"').to_string();
-    let bytes = dir.as_bytes();
-    if dir.is_empty() {
-        cwd.to_string()
-    } else if dir.starts_with('/')
-        || (bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':')
-    {
-        dir
-    } else {
-        format!("{cwd}/{dir}")
-    }
+    crate::repo::work_dir(command, cwd, runs_git_push)
 }
 
 /// Commands that change nothing a push leaves behind: changing folders,
