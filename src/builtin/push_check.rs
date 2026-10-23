@@ -6,6 +6,12 @@
 //! context, the checklist arrived together with the push's result, after
 //! the push (2026-10-11).
 //!
+//! A push chained after a `git commit` in the same command is stopped every
+//! time, asking for the commit to be sent first: the hook sees the command
+//! before it runs, so the commit made there would reach the remote unseen
+//! by the checks before a push (this one, keyed by HEAD, and
+//! private-word-guard, which reads the commits not yet pushed).
+//!
 //! Which pushes were stopped is kept as empty files in
 //! `$PUSH_CHECK_STATE_DIR`, else `$TMPDIR/claude-push-checked`, named by the
 //! first 16 hex digits of the sha1 of `<session> <repo root>\n<HEAD>`, or
@@ -19,6 +25,7 @@ use std::sync::LazyLock;
 
 use regex::Regex;
 
+use super::backslash::split_heredocs;
 use super::post_push::runs_git_push;
 use super::public_writing::writing_changed;
 use super::turn_state::all_heads;
@@ -89,6 +96,36 @@ pub(crate) fn held_back(command: &str) -> String {
         .to_string()
 }
 
+static GIT_COMMIT: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"^git([[:space:]]+-[^[:space:]]+([[:space:]]+[^-[:space:]][^[:space:]]*)?)*[[:space:]]+commit([[:space:]]|$)",
+    )
+    .unwrap()
+});
+
+static QUOTED: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"'[^']*'|"(?:[^"\\]|\\.)*""#).unwrap());
+
+/// Whether `command` makes a commit before it pushes. Heredoc bodies are
+/// text (a commit message that mentions git push), and quoted arguments
+/// count as one word (`git -C "a b" commit`). A command handed to a shell
+/// (`bash -c "git commit … && git push"`) is not looked into.
+pub(crate) fn commits_before_push(command: &str) -> bool {
+    let (command, _) = split_heredocs(command);
+    let heads = all_heads(&command);
+    let Some(push) = heads.iter().position(|head| runs_git_push(head)) else {
+        return false;
+    };
+    heads[..push]
+        .iter()
+        .any(|head| GIT_COMMIT.is_match(&QUOTED.replace_all(head, "x")))
+}
+
+const COMMIT_THEN_PUSH: &str = "commit と push を 1 つのコマンドでつないでいる。hook はコマンドが動く前に見るので、\
+     その場で作る commit を push 前の確認(この確認と private-word-guard)が調べられない。\
+     このコマンドの全体を止めた(commit などのつないだコマンドも実行されていない)。commit までを先に出し、push は別のコマンドで出す。\
+     つないだままなら、出し直しても毎回止める。";
+
 fn state_dir() -> PathBuf {
     if let Ok(dir) = std::env::var("PUSH_CHECK_STATE_DIR") {
         return PathBuf::from(windows_path(&dir));
@@ -109,6 +146,9 @@ pub fn run(input: &Input) -> Vec<Finding> {
     let command = input.command();
     if !runs_git_push(&command) {
         return Vec::new();
+    }
+    if commits_before_push(&command) {
+        return vec![Finding::new(ID, Kind::Deny, COMMIT_THEN_PUSH)];
     }
     let cwd = input.cwd();
     let dir = push_dir(&command, &cwd);
@@ -202,6 +242,50 @@ mod tests {
             "git push 2>&1 | tail -3",
         ] {
             assert_eq!(held_back(command), "", "{command}");
+        }
+    }
+
+    #[test]
+    fn finds_a_commit_before_the_push() {
+        for command in [
+            "git add a.rs && git commit -m 'x' && git push origin main",
+            "git commit -am x; git push",
+            "cd /c/x && git -C /c/x commit --amend --no-edit && git push --force-with-lease",
+            "git commit -F - <<'EOF'\nmessage\nEOF\ngit push",
+            "git -C \"C:/a b\" commit -m x && git push",
+        ] {
+            assert!(commits_before_push(command), "{command}");
+        }
+        for command in [
+            "git push origin main",
+            "git push && git commit -m x",
+            "git log -1 && git push",
+            "git commit -m 'then git push'",
+            "echo 'git commit' && git push",
+            "git commit -F - <<'EOF'\nfeat: x\n\ngit push is stopped\nEOF",
+        ] {
+            assert!(!commits_before_push(command), "{command}");
+        }
+    }
+
+    #[test]
+    fn stops_a_commit_and_push_every_time() {
+        let dir = tempfile::tempdir().unwrap();
+        // SAFETY: only this test reads the variable.
+        unsafe { std::env::set_var("PUSH_CHECK_STATE_DIR", dir.path()) };
+        let raw = serde_json::json!({
+            "hook_event_name": "PreToolUse",
+            "tool_name": "Bash",
+            "session_id": "s",
+            "cwd": dir.path(),
+            "tool_input": { "command": "git commit -am x && git push" },
+        });
+        let input = Input::parse(&raw.to_string()).unwrap();
+        for _ in 0..2 {
+            let found = run(&input);
+            assert_eq!(found.len(), 1);
+            assert!(matches!(found[0].kind, Kind::Deny));
+            assert!(found[0].message.starts_with("commit と push"));
         }
     }
 }
