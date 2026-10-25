@@ -43,7 +43,7 @@ fn hook() {
     // Printed only once every rule has run, so a failure cannot leave half
     // an answer.
     if let Some(out) = answer(&input.event(), &found) {
-        println!("{out}");
+        yhooky::outln!("{out}");
     }
 }
 
@@ -51,7 +51,7 @@ fn explain() {
     let Some(input) = read_input() else { return };
     let rules = Rules::load(&rule_dirs());
     for finding in findings(&input, &rules) {
-        println!("{}", serde_json::to_string(&finding).unwrap_or_default());
+        yhooky::outln!("{}", serde_json::to_string(&finding).unwrap_or_default());
     }
 }
 
@@ -59,9 +59,9 @@ fn check() -> ExitCode {
     let dirs = rule_dirs();
     let rules = Rules::load(&dirs);
     for dir in &dirs {
-        println!("rules: {}", dir.display());
+        yhooky::outln!("rules: {}", dir.display());
     }
-    println!(
+    yhooky::outln!(
         "{} rules, built-in checks: {}",
         rules.rules.len(),
         rules.builtins.join(", ")
@@ -75,7 +75,7 @@ fn check() -> ExitCode {
             .map(|n| format!("unknown builtin {n}")),
     );
     for problem in &bad {
-        println!("problem: {problem}");
+        yhooky::outln!("problem: {problem}");
     }
     if bad.is_empty() {
         ExitCode::SUCCESS
@@ -103,16 +103,16 @@ fn main() -> ExitCode {
                 match yhooky::cases::run(Path::new(file)) {
                     Ok(n) => failed += n,
                     Err(why) => {
-                        println!("problem: {why}");
+                        yhooky::outln!("problem: {why}");
                         failed += 1;
                     }
                 }
             }
             if failed == 0 {
-                println!("all cases passed");
+                yhooky::outln!("all cases passed");
                 ExitCode::SUCCESS
             } else {
-                println!("{failed} case(s) failed");
+                yhooky::outln!("{failed} case(s) failed");
                 ExitCode::FAILURE
             }
         }
@@ -123,10 +123,10 @@ fn main() -> ExitCode {
             };
             let found = builtin::language::check(Path::new(file));
             if found.is_empty() {
-                println!("英語主体の返答はありません");
+                yhooky::outln!("英語主体の返答はありません");
             }
             for line in found {
-                println!("{line}");
+                yhooky::outln!("{line}");
             }
             ExitCode::SUCCESS
         }
@@ -142,9 +142,15 @@ fn main() -> ExitCode {
             }
         }
         Some("notices") => {
-            print!("{}", include_str!("../THIRD-PARTY-NOTICES.md"));
-            println!();
-            print!("{}", include_str!("../DEPENDENCY-LICENSES.txt"));
+            use std::io::Write;
+            // Write errors are ignored as in `outln!`; `write!` so that no
+            // line end is added after the licenses.
+            let _ = write!(
+                std::io::stdout().lock(),
+                "{}\n{}",
+                include_str!("../THIRD-PARTY-NOTICES.md"),
+                include_str!("../DEPENDENCY-LICENSES.txt")
+            );
             ExitCode::SUCCESS
         }
         Some(other) => {

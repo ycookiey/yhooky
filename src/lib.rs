@@ -27,6 +27,17 @@ use input::Input;
 use output::Finding;
 use rules::Rules;
 
+/// Like `println!`, but ignores write errors instead of panicking: a reader
+/// that stops early (`yhooky notices | head`) closes the pipe, and that is
+/// not an error to report. Other write errors are ignored too.
+#[macro_export]
+macro_rules! outln {
+    ($($arg:tt)*) => {{
+        use std::io::Write as _;
+        let _ = writeln!(std::io::stdout().lock(), $($arg)*);
+    }};
+}
+
 /// The user's home: HOME (as Git Bash has it, or a Windows path), else
 /// USERPROFILE.
 pub fn home() -> Option<PathBuf> {

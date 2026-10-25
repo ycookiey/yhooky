@@ -185,7 +185,7 @@ pub fn run(file: &Path) -> Result<usize, String> {
         // A case for a rule that is not there would always be quiet.
         if !rules.rules.iter().any(|r| r.id == case.rule) && !rules.builtins.contains(&case.rule) {
             failed += 1;
-            println!(
+            crate::outln!(
                 "NG unknown (want {}) {}: no rule {} in {}",
                 case.expect,
                 case.name,
@@ -222,13 +222,15 @@ pub fn run(file: &Path) -> Result<usize, String> {
         let holds =
             case.contains.as_ref().is_none_or(has) && !case.excludes.as_ref().is_some_and(has);
         if got == case.expect && holds {
-            println!("OK {got:<7} {}", case.name);
+            crate::outln!("OK {got:<7} {}", case.name);
         } else {
             failed += 1;
             let messages: Vec<&str> = found.iter().map(|f| f.message.as_str()).collect();
-            println!(
+            crate::outln!(
                 "NG {got:<7} (want {}) {} {:?}",
-                case.expect, case.name, messages
+                case.expect,
+                case.name,
+                messages
             );
         }
     }

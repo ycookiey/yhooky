@@ -23,6 +23,27 @@ fn prints_the_notices_built_in() {
     }
 }
 
+/// When the reader closes the pipe after the first few bytes, `yhooky
+/// notices` still exits successfully, without a panic.
+#[test]
+fn stops_quietly_when_the_reader_stops() {
+    use std::io::Read;
+    use std::process::{Command, Stdio};
+    let mut child = Command::new(env!("CARGO_BIN_EXE_yhooky"))
+        .arg("notices")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut first = [0u8; 16];
+    child.stdout.take().unwrap().read_exact(&mut first).unwrap();
+    // The read end is dropped here, with most of the output unread.
+    let out = child.wait_with_output().unwrap();
+    let errors = String::from_utf8_lossy(&out.stderr);
+    assert!(out.status.success(), "{errors}");
+    assert!(!errors.contains("panicked"), "{errors}");
+}
+
 /// The crates the executable is built from, as `name vX.Y.Z`: the
 /// package's normal dependencies (not dev or build ones) for any target,
 /// as `cargo tree` resolves them, without the package itself.
