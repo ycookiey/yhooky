@@ -1,0 +1,14 @@
+Licenses of the crates yhooky is built from
+==========================================
+{{#each licenses}}
+
+--------------------------------------------------------------------------------
+{{{name}}}, used by:
+{{#each used_by}}
+{{#unless (eq crate.name "yhooky")}}
+  crate: {{{crate.name}}} {{{crate.version}}}
+{{/unless}}
+{{/each}}
+
+{{{text}}}
+{{/each}}

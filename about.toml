@@ -1,0 +1,12 @@
+# cargo-about settings for DEPENDENCY-LICENSES.txt, the licenses of the
+# crates yhooky is built from (on any platform). Regenerate it after
+# changing the dependencies (tests/notices.rs fails until then):
+#   cargo about generate about.hbs -o DEPENDENCY-LICENSES.txt
+accepted = [
+    "Apache-2.0",
+    "MIT",
+    "BSD-3-Clause",
+    "Unicode-3.0",
+]
+ignore-dev-dependencies = true
+ignore-build-dependencies = true

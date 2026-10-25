@@ -183,10 +183,11 @@ yhooky check                  # read the rule files and report the ones that can
 yhooky test <cases.toml>...   # check rules against example inputs (format in src/cases.rs)
 yhooky language-check <f>     # list the turns of past transcripts that language-guard would stop
 yhooky show-file <path>...    # open each file's folder in Explorer with the file selected, then minimize it (started by sendfile-to-ysidepaney)
+yhooky notices                # print THIRD-PARTY-NOTICES.md and DEPENDENCY-LICENSES.txt, the licenses of code taken from other projects and of the crates yhooky is built from
 ```
 
 ## License
 
 MIT OR Apache-2.0
 
-Parts taken from other projects keep their own licenses: see `THIRD-PARTY-NOTICES.md`.
+Code taken from other projects keeps its own license: see `THIRD-PARTY-NOTICES.md`. The crates yhooky is built from keep theirs: see `DEPENDENCY-LICENSES.txt`, made with [cargo-about](https://github.com/EmbarkStudios/cargo-about). `yhooky notices` prints both.

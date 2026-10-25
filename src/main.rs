@@ -6,6 +6,9 @@
 //! yhooky show-file <path>...  open each file's folder in Explorer with the file selected,
 //!                             minimized (src/explorer.rs; started by sendfile-to-ysidepaney,
 //!                             so the hook need not wait)
+//! yhooky notices              print THIRD-PARTY-NOTICES.md and DEPENDENCY-LICENSES.txt,
+//!                             which are built in, so a copy of the executable without the
+//!                             source still carries them
 //!
 //! As a hook it never stands in the way: when anything goes wrong (bad
 //! input, a rule file it cannot read, a panic) it prints nothing and exits
@@ -137,6 +140,12 @@ fn main() -> ExitCode {
             } else {
                 ExitCode::FAILURE
             }
+        }
+        Some("notices") => {
+            print!("{}", include_str!("../THIRD-PARTY-NOTICES.md"));
+            println!();
+            print!("{}", include_str!("../DEPENDENCY-LICENSES.txt"));
+            ExitCode::SUCCESS
         }
         Some(other) => {
             eprintln!("unknown command {other}; see the top of src/main.rs");
