@@ -133,7 +133,15 @@ pub fn run(file: &Path) -> Result<usize, String> {
         return Err(format!("{}: no rules", rules_dir.display()));
     }
 
-    let scratch = std::env::temp_dir().join(format!("yhooky-test-{}", std::process::id()));
+    // The counter keeps runs in one process (such as tests on parallel
+    // threads) from sharing a folder, since a run that finishes deletes its
+    // folder.
+    static RUNS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let run = RUNS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let scratch = std::env::temp_dir().join(format!("yhooky-test-{}-{run}", std::process::id()));
+    // A folder of this name can only be left by an earlier process that had
+    // the same id and stopped part way; start from an empty folder.
+    let _ = std::fs::remove_dir_all(&scratch);
     std::fs::create_dir_all(&scratch).map_err(|e| e.to_string())?;
     let scratch: PathBuf = scratch
         .canonicalize()
