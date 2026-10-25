@@ -144,7 +144,35 @@ type = 'monitor'                                  # the same string as the type 
 description = '^live updates for artifact '       # regular expression matching somewhere in the description
 ```
 
-A command is matched part by part, split at `&&`, `||`, `;`, `|` and newlines outside quotes. From the start of each part, `VAR=value`, `timeout <n>`, `nohup`, `exec`, `time`, `(` and `{` are removed, and parts that only prepare (`cd`, `sleep`, `rm`, `echo`, ...) are skipped. Matching is done against the string as written, quotes included.
+A command is matched part by part: the commands it runs, as described under "How commands are read" below. Parts that only prepare (`cd`, `sleep`, `rm`, `echo`, ...) are skipped. Matching is done against the part as written, quotes included.
+
+### How commands are read
+
+The built-in checks that ask what a Bash or PowerShell command runs (`push-check-reminder`, `private-word-guard`, `post-push-reminder`, `public-repo-writing-reminder`, `wago-verb-reminder`, `git-add-own-check` and `turn-state`) read it in two ways. Rules in the rule files match the command's text as written instead.
+
+**Which commands run, and in which folder.** The command is read as the shell would read it:
+
+- It is split at `&&`, `||`, `;`, `|`, `&`, parentheses and line ends outside quotes, and lines continued with `\` are joined. Words that only start the rest of a command (`VAR=value`, `sudo`, `env`, `nohup`, `timeout <n>`, `time` and the like) are taken off its start. An unclosed quote or parenthesis is read to the end of the command (bash would reject the command and run nothing).
+- Quoted text, comments and heredoc bodies are data, not commands: a commit message or a PR body that mentions `git push` or `cd` runs nothing. Substitutions (`$(…)`, backquotes, `<(…)`, `>(…)`) run, also inside double quotes and in a heredoc whose delimiter is not quoted (`<<EOF`, unlike `<<'EOF'`).
+- What is handed to a shell runs:
+  - a quoted argument after `-c`, `/c` or `-Command` (`bash -c "…"`, `cmd /c "…"`, `pwsh -Command "…"`), but not after a command whose `-c` means something else (`grep -c`);
+  - a heredoc given to a shell that reads its input (`bash <<'EOF'`, `cat <<'EOF' | bash`);
+  - a heredoc written to a file that a later command runs (`cat > s.sh <<'EOF'`, then `bash s.sh`).
+- The folder of a `git push` or a `gh pr`/`gh release` command starts from the hook's working folder. It follows the `cd` commands run before it (also `pushd` and `Set-Location`), a relative one from the folder reached so far, then a `git -C <dir>` at the command's start. A `cd` inside a subshell, a substitution, a shell started inside or a function's body counts only there: `(cd x) && git push` pushes from the working folder. A folder named by a variable or a substitution (`cd "$dir"`) is not followed.
+- A command given to the PowerShell tool is read with PowerShell's rules: a backquote escapes the next character, `@'…'@` and `@"…"@` are strings, `<# … #>` is a comment, and there are no heredocs.
+
+**Whether a push or a `gh pr`/`gh release` command runs at all.** A shell can be handed text in more ways than the reading above follows, so these commands are also matched against the whole command with quoted text taken out. Text quoted after `-c`, `/c` or `-Command` is read too, except after a command for which `-c` takes no code (`grep -c`, `tar -c`). A push found only this way runs in the folder that the `cd`s before it reach, with the command split at `&&`, `||`, `;`, `|` and line ends outside quotes and heredoc bodies.
+
+This match leaves out only text that is surely data, and only in a Bash command where every command run leaves the shell as it is and runs nothing it is given. Such commands are `cat`, `grep`, `rm`, `cd`, `echo`, `git add`, `git commit` and `git push` without an editor or a program option, `gh pr`, `gh issue`, `gh release`, `gh api` and the like. The command must also hold no assignment, no arithmetic, and no comment after other text on its line. The text left out is:
+
+- comments that take a whole line;
+- the body of a heredoc that holds no substitution and goes only to one of these:
+  - a command that reads it as text (`git commit -F -`, `gh pr create --body-file -`);
+  - an argument of `git commit` or `gh` (`gh pr create --body "$(cat <<'EOF' …)"`);
+  - the output;
+  - a text file (`.md`, `.txt` and the like) named as written.
+
+So a PR body or a commit message that mentions `git push` is not taken for a push. A heredoc given to a script (`bash x.sh <<'EOF'`) or written to a script file still counts.
 
 ## Commands
 

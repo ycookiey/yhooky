@@ -17,11 +17,11 @@ use std::sync::LazyLock;
 
 use regex::Regex;
 
-use super::post_push::runs;
 use crate::docs;
 use crate::input::Input;
 use crate::output::{Finding, Kind};
 use crate::public_repo::{git_config, github_public, is_public};
+use crate::shell::Dialect;
 use crate::text::{matches, strip_quote, windows_path};
 
 const ID: &str = "public-repo-writing-reminder";
@@ -80,16 +80,27 @@ static GH_PR_OR_RELEASE: LazyLock<Regex> =
 
 /// The folder the first `gh pr …` or `gh release …` of the command runs
 /// in (src/repo.rs).
-pub(crate) fn gh_dir(command: &str, cwd: &str) -> String {
-    crate::repo::work_dir(command, cwd, |head| GH_PR_OR_RELEASE.is_match(head))
+pub(crate) fn gh_dir(command: &str, cwd: &str, dialect: Dialect) -> String {
+    crate::repo::work_dir_in(command, cwd, dialect, |head| {
+        GH_PR_OR_RELEASE.is_match(head)
+    })
+}
+
+/// How the command of a tool is read: PowerShell's, or Bash's.
+pub(crate) fn dialect_of(tool: &str) -> Dialect {
+    if tool == "PowerShell" {
+        Dialect::PowerShell
+    } else {
+        Dialect::Bash
+    }
 }
 
 /// The public repository a gh command acts on: the one named by
 /// `-R`/`--repo`, else the one the command works in.
-pub(crate) fn public_repo_of_command(command: &str, cwd: &str) -> Option<String> {
+pub(crate) fn public_repo_of_command(command: &str, cwd: &str, dialect: Dialect) -> Option<String> {
     match repo_flag(command) {
         Some(name) => github_public(&name).then(|| format!("github:{name}")),
-        None => public_repo_of(Path::new(&windows_path(&gh_dir(command, cwd)))),
+        None => public_repo_of(Path::new(&windows_path(&gh_dir(command, cwd, dialect)))),
     }
 }
 
@@ -113,10 +124,11 @@ pub fn run(input: &Input) -> Vec<Finding> {
         }
         "Bash" | "PowerShell" => {
             let command = input.command();
-            if !runs(&PUBLISH, &command) {
+            let dialect = dialect_of(&tool);
+            if !crate::shell::runs_in(&PUBLISH, &command, dialect) {
                 return Vec::new();
             }
-            let Some(repo) = public_repo_of_command(&command, &input.cwd()) else {
+            let Some(repo) = public_repo_of_command(&command, &input.cwd(), dialect) else {
                 return Vec::new();
             };
             ("publish", repo, PUBLISH_NOTE)

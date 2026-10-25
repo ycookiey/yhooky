@@ -33,11 +33,9 @@
 //! description = '^live updates for artifact '          # matched anywhere in it
 //! ```
 //!
-//! A command's heads are its parts split at `&&`, `||`, `;`, `|` and line
-//! ends outside quotes, each without leading `VAR=value`, `timeout <n>`,
-//! `nohup`, `exec`, `time`, `(` and `{`; parts that only set up (`cd`,
-//! `sleep`, `rm`, `echo`, ...) are left out. Patterns see the head as
-//! written, quotes and all.
+//! A command's heads are the commands it runs, as src/shell.rs reads them;
+//! those that only set up (`cd`, `sleep`, `rm`, `echo`, ...) are left out.
+//! Patterns see the head as written, quotes and all.
 
 use std::collections::HashSet;
 use std::fs::{self, OpenOptions};
@@ -55,15 +53,6 @@ use crate::output::Finding;
 use crate::text::windows_path;
 use crate::{home, log};
 
-static QUOTED: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r#"'[^']*'|"(?:[^"\\]|\\.)*""#).unwrap());
-static SEP: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"&&|\|\||[;|\n]").unwrap());
-static PREFIX: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(
-        r"^(?:[({]\s*|[A-Za-z_][A-Za-z0-9_]*=\S*\s+|timeout\s+\S+\s+|nohup\s+|exec\s+|time\s+)",
-    )
-    .unwrap()
-});
 static SETUP: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
         r"^(?:cd|Set-Location|sleep|Start-Sleep|rm|mkdir|echo|export|taskkill|true|[A-Za-z_][A-Za-z0-9_]*=\S*|\$\w+\s*=.*)(?:\s|$)",
@@ -147,36 +136,16 @@ impl Resident {
 }
 
 /// The parts of `command` that run a program, as the module doc says.
-pub fn heads(command: &str) -> Vec<&str> {
+pub fn heads(command: &str) -> Vec<String> {
     all_heads(command)
         .into_iter()
         .filter(|head| !SETUP.is_match(head))
         .collect()
 }
 
-/// The parts of `command`, split and stripped as for [`heads`], with the
-/// parts that only set up kept.
-pub fn all_heads(command: &str) -> Vec<&str> {
-    // Quoted text keeps its length so the separators found in the masked
-    // copy cut the command at the same places.
-    let masked = QUOTED.replace_all(command, |c: &regex::Captures| "x".repeat(c[0].len()));
-    let mut parts = Vec::new();
-    let mut start = 0;
-    for sep in SEP.find_iter(&masked) {
-        parts.push(&command[start..sep.start()]);
-        start = sep.end();
-    }
-    parts.push(&command[start..]);
-    parts
-        .into_iter()
-        .filter_map(|part| {
-            let mut head = part.trim().trim_end_matches('&').trim_end();
-            while let Some(m) = PREFIX.find(head) {
-                head = head[m.end()..].trim_start();
-            }
-            (!head.is_empty()).then_some(head)
-        })
-        .collect()
+/// The commands `command` runs, the ones that only set up kept.
+pub fn all_heads(command: &str) -> Vec<String> {
+    crate::shell::commands(command)
 }
 
 pub fn is_resident(command: &str, rules: &[Resident]) -> bool {
@@ -372,15 +341,23 @@ mod tests {
         );
         assert_eq!(
             heads("sleep 3; ( npx vite --port 5 )"),
-            vec!["npx vite --port 5 )"]
+            vec!["npx vite --port 5"]
         );
     }
 
     #[test]
-    fn heads_do_not_split_inside_quotes() {
+    fn heads_add_what_a_shell_is_given() {
         let command =
             r#"powershell -Command "Get-Process | Where-Object { $_.Name -like '*next dev*' }""#;
-        assert_eq!(heads(command), vec![command]);
+        // What the shell is given runs too; its own quotes stay whole.
+        assert_eq!(
+            heads(command),
+            vec![
+                command,
+                "Get-Process",
+                "Where-Object { $_.Name -like '*next dev*' }"
+            ]
+        );
     }
 
     #[test]

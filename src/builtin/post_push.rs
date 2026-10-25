@@ -13,7 +13,7 @@ use regex::Regex;
 use crate::input::Input;
 use crate::output::{Finding, Kind};
 use crate::repo;
-use crate::text::{any_line, matches, windows_path};
+use crate::text::{matches, windows_path};
 
 const ID: &str = "post-push-reminder";
 
@@ -23,43 +23,26 @@ pub static GIT_PUSH: LazyLock<Regex> = LazyLock::new(|| {
     )
     .unwrap()
 });
-static QUOTED: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r#"'[^']*'|"(?:[^"\\]|\\.)*""#).unwrap());
-/// What hands the next argument to a shell as a command.
-static RUNS_ARG: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)(^|\s)(-c|/c|-command)\s*$").unwrap());
-
-/// Whether `command` runs `git push`. Quoted text is data (a commit message
-/// that mentions git push stopped the commit, 2026-10-15) unless it is
-/// handed to a shell (`bash -c "..."`, `cmd /c "..."`, `pwsh -Command
-/// "..."`). Heredoc bodies still count, as they may be run.
+/// Whether `command` runs `git push`, as src/shell.rs reads it: quoted
+/// text (a commit message that mentions git push) and heredoc bodies that
+/// only feed a file or a program are data.
 pub fn runs_git_push(command: &str) -> bool {
     runs(&GIT_PUSH, command)
 }
 
-/// Whether `command` runs what `re` matches, with quoted text read as data
-/// in the same way as [`runs_git_push`].
+/// Whether one command, as [`crate::shell::commands`] gives it, is itself
+/// a `git push` (not one handed to a shell inside it). A `#` is text here:
+/// the commands given hold no comment, and a part
+/// [`crate::shell::as_text_parts`] gives may hold a `#` inside a word
+/// (`echo $(date)#& git push`).
+pub fn is_git_push(command: &str) -> bool {
+    GIT_PUSH.is_match(&crate::shell::without_quotes(command))
+}
+
+/// Whether `command` runs what `re` matches, read as for
+/// [`runs_git_push`].
 pub fn runs(re: &Regex, command: &str) -> bool {
-    let mut masked = String::with_capacity(command.len());
-    let mut last = 0;
-    for quoted in QUOTED.find_iter(command) {
-        let before = &command[last..quoted.start()];
-        masked.push_str(before);
-        let inner = &quoted.as_str()[1..quoted.as_str().len() - 1];
-        if RUNS_ARG.is_match(&command[..quoted.start()]) && runs(re, inner) {
-            return true;
-        }
-        // Same length, no line breaks: lines keep their places.
-        masked.extend(
-            quoted
-                .as_str()
-                .chars()
-                .map(|c| if c == '\n' { '\n' } else { 'x' }),
-        );
-        last = quoted.end();
-    }
-    masked.push_str(&command[last..]);
-    any_line(re, &masked)
+    crate::shell::runs(re, command)
 }
 
 /// Only a push that went through prints `old..new  src -> dst`.
@@ -72,6 +55,11 @@ static NEW_COMMIT: LazyLock<Regex> =
 
 /// The after-push scripts a repository has, as they are run.
 const SCRIPTS: [&str; 2] = ["scripts/watch-push.sh", "scripts/flows-publish.sh"];
+
+/// The folder the first `git push` of `command` ran in (src/repo.rs).
+pub(crate) fn post_push_dir(command: &str, cwd: &str) -> String {
+    repo::work_dir(command, cwd, is_git_push)
+}
 
 pub fn run(input: &Input) -> Vec<Finding> {
     if input.event() != "PostToolUse" || input.tool() != "Bash" {
@@ -88,7 +76,7 @@ pub fn run(input: &Input) -> Vec<Finding> {
     let Some(commit) = NEW_COMMIT.captures(last).map(|c| c[1].to_string()) else {
         return Vec::new();
     };
-    let dir = repo::work_dir(&command, &input.cwd(), runs_git_push);
+    let dir = post_push_dir(&command, &input.cwd());
     let base = windows_path(&dir);
     let scripts: Vec<String> = SCRIPTS
         .iter()

@@ -43,8 +43,9 @@ use regex::Regex;
 
 use super::backslash::split_heredocs;
 use super::phrases;
+#[cfg(test)]
 use super::post_push::runs;
-use super::public_writing::{gh_dir, public_repo_of_command};
+use super::public_writing::{dialect_of, gh_dir, public_repo_of_command};
 use crate::docs;
 use crate::input::Input;
 use crate::output::{Finding, Kind};
@@ -240,17 +241,18 @@ fn outgoing_text(input: &Input) -> Option<Outgoing> {
     }
     if tool == "Bash" || tool == "PowerShell" {
         let command = input.command();
-        if !runs(&PUBLISH, &command) {
+        let dialect = dialect_of(&tool);
+        if !crate::shell::runs_in(&PUBLISH, &command, dialect) {
             return None;
         }
         let cwd = input.cwd();
-        let dir = windows_path(&gh_dir(&command, &cwd));
+        let dir = windows_path(&gh_dir(&command, &cwd, dialect));
         let text = published_text(&command, Path::new(&dir));
         if !JAPANESE.is_match(&text) {
             return None;
         }
         // Looked up only now: it may run `gh`.
-        public_repo_of_command(&command, &cwd)?;
+        public_repo_of_command(&command, &cwd, dialect)?;
         return Some(Outgoing {
             text: prose("body.md", &text),
             sends: true,

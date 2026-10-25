@@ -28,6 +28,7 @@ use crate::docs;
 use crate::input::Input;
 use crate::once;
 use crate::output::{Finding, Kind};
+pub(crate) use crate::shell::split_heredocs;
 
 const ID: &str = "backslash-shrink-guard";
 
@@ -45,87 +46,6 @@ static INLINE_SCRIPT: LazyLock<Regex> = LazyLock::new(|| {
 fn first_time(session: &str, command: &str) -> bool {
     let dir = once::state_dir("BACKSLASH_GUARD_STATE_DIR", "claude-backslash-guard");
     once::first_time(&dir, &format!("{session}\n{command}"))
-}
-
-/// The heredocs a line opens: (strip leading tabs, end word), as the
-/// pattern `<<(-?)\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\2` finds them.
-fn heredocs(line: &str) -> Vec<(bool, String)> {
-    let chars: Vec<char> = line.chars().collect();
-    let mut found = Vec::new();
-    let mut i = 0;
-    while i + 1 < chars.len() {
-        if chars[i] != '<' || chars[i + 1] != '<' {
-            i += 1;
-            continue;
-        }
-        let mut j = i + 2;
-        let strip = chars.get(j) == Some(&'-');
-        if strip {
-            j += 1;
-        }
-        while chars.get(j).is_some_and(|c| c.is_whitespace()) {
-            j += 1;
-        }
-        let quote = chars.get(j).copied().filter(|c| *c == '\'' || *c == '"');
-        let start = j + usize::from(quote.is_some());
-        let mut end = start;
-        if chars
-            .get(end)
-            .is_some_and(|c| c.is_ascii_alphabetic() || *c == '_')
-        {
-            end += 1;
-            while chars
-                .get(end)
-                .is_some_and(|c| c.is_ascii_alphanumeric() || *c == '_')
-            {
-                end += 1;
-            }
-        }
-        let closed = match quote {
-            Some(q) => chars.get(end) == Some(&q),
-            None => true,
-        };
-        if end > start && closed {
-            found.push((strip, chars[start..end].iter().collect()));
-            i = end + usize::from(quote.is_some());
-        } else {
-            // As the pattern would, try again from the next character.
-            i += 1;
-        }
-    }
-    found
-}
-
-/// The command without heredoc bodies, and the bodies.
-pub(crate) fn split_heredocs(command: &str) -> (String, Vec<String>) {
-    let lines: Vec<&str> = command.split('\n').collect();
-    let mut kept = Vec::new();
-    let mut bodies = Vec::new();
-    let mut i = 0;
-    while i < lines.len() {
-        let line = lines[i];
-        kept.push(line);
-        i += 1;
-        for (strip, word) in heredocs(line) {
-            let mut body = Vec::new();
-            while i < lines.len() {
-                let end = if strip {
-                    lines[i].trim_start_matches('\t')
-                } else {
-                    lines[i]
-                };
-                if end == word {
-                    kept.push(lines[i]);
-                    i += 1;
-                    break;
-                }
-                body.push(lines[i]);
-                i += 1;
-            }
-            bodies.push(body.join("\n"));
-        }
-    }
-    (kept.join("\n"), bodies)
 }
 
 #[derive(PartialEq)]
@@ -288,20 +208,6 @@ pub fn run(input: &Input) -> Vec<Finding> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn finds_heredoc_words() {
-        assert_eq!(
-            heredocs("cat <<'EOF' > a"),
-            vec![(false, "EOF".to_string())]
-        );
-        assert_eq!(heredocs("cat <<- \"X\""), vec![(true, "X".to_string())]);
-        assert_eq!(heredocs("cat <<'EOF"), Vec::<(bool, String)>::new());
-        assert_eq!(
-            heredocs("a <<A b <<B"),
-            vec![(false, "A".into()), (false, "B".into())]
-        );
-    }
 
     #[test]
     fn finds_inline_scripts() {

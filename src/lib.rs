@@ -20,6 +20,7 @@ pub mod output;
 pub mod public_repo;
 pub mod repo;
 pub mod rules;
+pub mod shell;
 pub mod text;
 
 use input::Input;

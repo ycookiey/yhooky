@@ -25,10 +25,8 @@ use std::sync::LazyLock;
 
 use regex::Regex;
 
-use super::backslash::split_heredocs;
-use super::post_push::runs_git_push;
+use super::post_push::{is_git_push, runs_git_push};
 use super::public_writing::writing_changed;
-use super::turn_state::all_heads;
 use crate::docs;
 use crate::input::Input;
 use crate::output::{Finding, Kind};
@@ -40,7 +38,7 @@ const ID: &str = "push-check-reminder";
 /// The folder pushed from: where the first `git push` of the command runs
 /// (src/repo.rs).
 pub(crate) fn push_dir(command: &str, cwd: &str) -> String {
-    crate::repo::work_dir(command, cwd, runs_git_push)
+    crate::repo::work_dir(command, cwd, is_git_push)
 }
 
 /// Commands that change nothing a push leaves behind: changing folders,
@@ -58,7 +56,7 @@ static NOT_HELD: LazyLock<Regex> = LazyLock::new(|| {
 /// tail -3`) do not count; other setup (`rm`, `mkdir`) does, as it did not
 /// run either.
 pub(crate) fn held_back(command: &str) -> String {
-    if all_heads(command)
+    if crate::shell::commands(command)
         .iter()
         .all(|head| runs_git_push(head) || NOT_HELD.is_match(head))
     {
@@ -76,22 +74,17 @@ static GIT_COMMIT: LazyLock<Regex> = LazyLock::new(|| {
     .unwrap()
 });
 
-static QUOTED: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r#"'[^']*'|"(?:[^"\\]|\\.)*""#).unwrap());
-
-/// Whether `command` makes a commit before it pushes. Heredoc bodies are
-/// text (a commit message that mentions git push), and quoted arguments
-/// count as one word (`git -C "a b" commit`). A command handed to a shell
-/// (`bash -c "git commit … && git push"`) is not looked into.
+/// Whether `command` makes a commit before it pushes, reading the commands
+/// it runs as src/shell.rs does (quoted text and heredoc bodies that only
+/// feed a file are data; `bash -c "…"` is looked into).
 pub(crate) fn commits_before_push(command: &str) -> bool {
-    let (command, _) = split_heredocs(command);
-    let heads = all_heads(&command);
-    let Some(push) = heads.iter().position(|head| runs_git_push(head)) else {
+    let heads = crate::shell::commands(command);
+    let Some(push) = heads.iter().position(|head| is_git_push(head)) else {
         return false;
     };
     heads[..push]
         .iter()
-        .any(|head| GIT_COMMIT.is_match(&QUOTED.replace_all(head, "x")))
+        .any(|head| GIT_COMMIT.is_match(&crate::shell::unquoted(head)))
 }
 
 const COMMIT_THEN_PUSH: &str = "commit と push を 1 つのコマンドでつないでいる。hook はコマンドが動く前に見るので、\

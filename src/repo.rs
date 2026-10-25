@@ -6,6 +6,7 @@ use std::sync::LazyLock;
 use regex::Regex;
 
 use crate::input::Input;
+use crate::shell::{Dialect, Run};
 use crate::text::{matches, strip_quote, windows_path};
 
 static GIT_C: LazyLock<Regex> =
@@ -51,8 +52,11 @@ pub fn dir(input: &Input, first: First) -> String {
 
 /// A change of folder, its options (`-P`, `-Path`) passed over.
 static CD_HEAD: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"^(?:cd|pushd|Set-Location)(?:\s+-\S+)*(?:\s+("[^"]*"|'[^']*'|[^\s;&|]+))?"#)
-        .unwrap()
+    // cmd's `cd /d C:\x` changes the drive too.
+    Regex::new(
+        r#"(?i)^(?:cd|pushd|Set-Location)(?:\s+-\S+|\s+/d)*(?:\s+("[^"]*"|'[^']*'|[^\s;&|]+))?"#,
+    )
+    .unwrap()
 });
 /// `git -C <dir>` at the start of a part.
 static GIT_C_ARG: LazyLock<Regex> =
@@ -60,11 +64,17 @@ static GIT_C_ARG: LazyLock<Regex> =
 
 /// `to` from the folder `from`: as it is when absolute (`/c/x`, `C:/x`,
 /// `\\server\x`), from the home folder when it starts with `~`, else
-/// joined to `from`. A folder named by a variable (`$dir`) cannot be known
-/// here, so `from` is kept.
+/// joined to `from`. A folder named by a variable or a substitution
+/// (`$dir`, `$(…)`) or filled in later (`xargs -I{} sh -c 'cd {}'`)
+/// cannot be known here, so `from` is kept, and so is it past a length no
+/// folder has (`cd a` many times), so that following stays in proportion.
 fn change_dir(from: &str, to: &str) -> String {
+    const LONGEST: usize = 4096;
+    if from.len() + to.len() > LONGEST {
+        return from.to_string();
+    }
     let to = strip_quote(strip_quote(to, '"'), '\'');
-    if to.contains('$') {
+    if to.contains('$') || to.contains("{}") {
         return from.to_string();
     }
     let bytes = to.as_bytes();
@@ -83,55 +93,111 @@ fn change_dir(from: &str, to: &str) -> String {
     format!("{}/{to}", from.trim_end_matches(['/', '\\']))
 }
 
-/// The folder the first part of `command` that `is_target` accepts (`git
-/// push`, `gh pr create`) runs in. Starting from `cwd`, the `cd`s run
-/// before that part are followed in order (a relative one from the folder
-/// reached so far), then a `git -C <dir>` in the part itself. The parts
-/// are split as in turn-state, outside quotes and with heredoc bodies left
-/// out, so a `cd` written in a PR body or a commit message does not count.
-/// When no part is accepted (the target runs inside `$(…)`, `bash -c` or a
-/// heredoc given to a shell), the folder reached by all the `cd`s.
+/// The folder the first command of `command` (Bash) that `is_target`
+/// accepts (`git push`, `gh pr create`) runs in; see [`work_dir_in`].
 pub fn work_dir(command: &str, cwd: &str, is_target: impl Fn(&str) -> bool) -> String {
-    let (command, _) = crate::builtin::backslash::split_heredocs(command);
-    let mut dir = cwd.to_string();
-    for head in crate::builtin::turn_state::all_heads(&command) {
-        if is_target(head) {
-            if let Some(c) = GIT_C_ARG.captures(head) {
-                dir = change_dir(&dir, &c[1]);
-            }
-            return dir;
-        }
-        if let Some(c) = CD_HEAD.captures(head)
-            && let Some(to) = c.get(1)
-            && to.as_str() != "-"
-        {
-            dir = change_dir(&dir, to.as_str());
-        }
-    }
-    dir
+    work_dir_in(command, cwd, Dialect::Bash, is_target)
 }
 
-/// Every part of `command` as `(folder, part)`: the folder follows the
-/// `cd`s before the part from `cwd` as in `work_dir`, then a `git -C <dir>`
-/// in the part itself. The parts are split as in `work_dir`, so text in
-/// quotes or heredoc bodies is not taken for a part.
+/// The folder the first command of `command` that `is_target` accepts runs
+/// in. Starting from `cwd`, the `cd`s run before it that reach it (in its
+/// list, or one holding it: a `cd` in a subshell or `$(…)` stays there)
+/// are followed in order, a relative one from the folder reached so far,
+/// then a `git -C <dir>` at the start of the command itself. The commands
+/// are those src/shell.rs reads, so a `cd` written in a PR body or a
+/// commit message does not count. When none is accepted (the target is
+/// found only by the plain match, [`crate::shell::as_text_finds`]), the
+/// `cd`s before it in the parts [`crate::shell::as_text_parts`] gives,
+/// outside heredoc bodies.
+pub fn work_dir_in(
+    command: &str,
+    cwd: &str,
+    dialect: Dialect,
+    is_target: impl Fn(&str) -> bool,
+) -> String {
+    let runs = crate::shell::runs_of(command, dialect);
+    let follow = |until: usize, reaches: &dyn Fn(&Run) -> bool| {
+        let mut dir = cwd.to_string();
+        for run in &runs[..until] {
+            if reaches(run)
+                && let Some(c) = CD_HEAD.captures(&run.text)
+                && let Some(to) = c.get(1)
+                && to.as_str() != "-"
+            {
+                dir = change_dir(&dir, to.as_str());
+            }
+        }
+        dir
+    };
+    match runs.iter().position(|run| is_target(&run.text)) {
+        Some(at) => {
+            let target = &runs[at];
+            let mut dir = follow(at, &|run| run.reaches(target));
+            if let Some(c) = GIT_C_ARG.captures(&target.text) {
+                dir = change_dir(&dir, &c[1]);
+            }
+            dir
+        }
+        // Found only by the plain match: its folder from the plainly split
+        // parts outside heredoc bodies, up to the target or to the end.
+        None => {
+            let kept = match dialect {
+                Dialect::Bash => crate::shell::split_heredocs(command).0,
+                Dialect::PowerShell => command.to_string(),
+            };
+            let mut dir = cwd.to_string();
+            for head in crate::shell::as_text_parts(&kept) {
+                if crate::shell::as_text_finds(head, &is_target) {
+                    if let Some(c) = GIT_C_ARG.captures(head) {
+                        dir = change_dir(&dir, &c[1]);
+                    }
+                    return dir;
+                }
+                if let Some(c) = CD_HEAD.captures(head)
+                    && let Some(to) = c.get(1)
+                    && to.as_str() != "-"
+                {
+                    dir = change_dir(&dir, to.as_str());
+                }
+            }
+            dir
+        }
+    }
+}
+
+/// Every command `command` (Bash) runs but a `cd`, as `(folder, command)`,
+/// read by src/shell.rs (text in quotes or heredoc bodies is not a command;
+/// what a shell is handed is): the folder follows the `cd`s run before it
+/// that reach it, from `cwd`, as in [`work_dir_in`], then a `git -C <dir>`
+/// at the start of the command itself.
 pub fn parts_with_dirs(command: &str, cwd: &str) -> Vec<(String, String)> {
-    let (command, _) = crate::builtin::backslash::split_heredocs(command);
-    let mut dir = cwd.to_string();
+    let runs = crate::shell::runs_of(command, Dialect::Bash);
+    // The folder each open list has reached, outermost first: a list the
+    // reading has left is not entered again, so it is dropped.
+    let mut reached: Vec<(&Run, String)> = Vec::new();
     let mut parts = Vec::new();
-    for head in crate::builtin::turn_state::all_heads(&command) {
-        if let Some(c) = CD_HEAD.captures(head)
-            && let Some(to) = c.get(1)
-            && to.as_str() != "-"
+    for run in &runs {
+        while reached
+            .last()
+            .is_some_and(|(cd, _)| !cd.reaches_scope(run.scope()))
         {
-            dir = change_dir(&dir, to.as_str());
+            reached.pop();
+        }
+        let dir = reached.last().map_or(cwd, |(_, dir)| dir.as_str());
+        if let Some(c) = CD_HEAD.captures(&run.text) {
+            if let Some(to) = c.get(1)
+                && to.as_str() != "-"
+            {
+                let moved = change_dir(dir, to.as_str());
+                reached.push((run, moved));
+            }
             continue;
         }
-        let here = match GIT_C_ARG.captures(head) {
-            Some(c) => change_dir(&dir, &c[1]),
-            None => dir.clone(),
+        let dir = match GIT_C_ARG.captures(&run.text) {
+            Some(c) => change_dir(dir, &c[1]),
+            None => dir.to_string(),
         };
-        parts.push((here, head.to_string()));
+        parts.push((dir, run.text.clone()));
     }
     parts
 }
@@ -231,7 +297,25 @@ mod tests {
             ("cd /c/a && url=$(gh pr create --fill)", "/c/a"),
             ("cd /c/a && git push && gh release create v1", "/c/a"),
         ] {
-            assert_eq!(gh_dir(command, here), want, "{command}");
+            assert_eq!(gh_dir(command, here, Dialect::Bash), want, "{command}");
         }
+    }
+
+    #[test]
+    fn gives_each_command_its_folder() {
+        let parts = parts_with_dirs(
+            "(cd /c/a && git add x); git add y; git -C /c/b add z; cat > m.md <<'EOF'\ngit add w\nEOF",
+            "C:/here",
+        );
+        let of = |command: &str| {
+            parts
+                .iter()
+                .find(|(_, c)| c == command)
+                .map(|(d, _)| d.as_str())
+        };
+        assert_eq!(of("git add x"), Some("/c/a"));
+        assert_eq!(of("git add y"), Some("C:/here"));
+        assert_eq!(of("git -C /c/b add z"), Some("/c/b"));
+        assert_eq!(of("git add w"), None, "a heredoc body is not a command");
     }
 }
