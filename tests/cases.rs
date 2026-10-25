@@ -451,3 +451,126 @@ fn private_word_guard_stops_a_push_with_listed_words() {
     std::fs::write(&list, "words = [\"notes\"]\n").unwrap();
     assert_eq!(push("git push").len(), 1, "another listed word");
 }
+
+#[test]
+fn git_add_own_check_stops_adding_a_file_with_changes_not_known_as_own() {
+    use std::process::Command;
+    let dir = tempfile::tempdir().unwrap();
+    let repo = dir.path();
+    let git = |args: &[&str]| {
+        assert!(
+            Command::new("git")
+                .arg("-C")
+                .arg(repo)
+                .args(args)
+                .status()
+                .unwrap()
+                .success()
+        )
+    };
+    git(&["init", "-q"]);
+    git(&["config", "user.email", "t@example.com"]);
+    git(&["config", "user.name", "t"]);
+    std::fs::create_dir_all(repo.join("sub")).unwrap();
+    for file in ["sub/dirty.md", "clean.md", "begun.md", "mine.md"] {
+        std::fs::write(repo.join(file), "one\n").unwrap();
+    }
+    git(&["add", "sub/dirty.md", "clean.md", "begun.md", "mine.md"]);
+    git(&["commit", "-q", "-m", "x"]);
+    for file in ["sub/dirty.md", "begun.md", "mine.md"] {
+        std::fs::write(repo.join(file), "two\n").unwrap();
+    }
+    std::fs::write(repo.join("untracked.md"), "one\n").unwrap();
+    let hash = |path: &str| sha1_smol::Sha1::from(path).digest().to_string();
+    let store = repo.join(".git").join("stage-own-edit");
+    std::fs::create_dir_all(&store).unwrap();
+    std::fs::write(store.join(hash("begun.md")), "two\n").unwrap();
+    let repo_dir = repo.to_string_lossy().replace('\\', "/");
+
+    let run = |command: &str, cwd: &str, session: &str| {
+        let raw = serde_json::json!({
+            "hook_event_name": "PreToolUse",
+            "tool_name": "Bash",
+            "session_id": format!("{session}-{}", std::process::id()),
+            "cwd": cwd,
+            "tool_input": { "command": command },
+        });
+        let input = yhooky::input::Input::parse(&raw.to_string()).unwrap();
+        yhooky::builtin::git_add_own::run(&input)
+    };
+    // Session add1 made the first change to mine.md with Edit (stage-own-edit-reminder's mark).
+    let own = std::env::temp_dir()
+        .join("claude-stage-own-edit-reminder")
+        .join(format!("add1-{}", std::process::id()))
+        .join(hash("mine.md"));
+    std::fs::create_dir_all(own.parent().unwrap()).unwrap();
+    std::fs::write(&own, "").unwrap();
+    assert!(
+        run("git add mine.md", &repo_dir, "add1").is_empty(),
+        "a file this session changed first with Edit"
+    );
+    let first = run("git add sub/dirty.md clean.md", &repo_dir, "add1");
+    assert_eq!(first.len(), 1, "a changed file not known as own");
+    assert!(
+        first[0]
+            .message
+            .starts_with("sub/dirty.md は HEAD と差があり")
+    );
+    assert!(matches!(first[0].kind, yhooky::output::Kind::Deny));
+    assert!(
+        run("git add sub/dirty.md", &repo_dir, "add1").is_empty(),
+        "same session again"
+    );
+    assert_eq!(
+        run("git add sub/dirty.md", &repo_dir, "add2").len(),
+        1,
+        "other session"
+    );
+    let kept = run("git add begun.md", &repo_dir, "add1");
+    assert_eq!(kept.len(), 1, "a file with a begin copy");
+    assert!(kept[0].message.contains("git stage-own-edit stage"));
+    assert_eq!(
+        run("git add begun.md", &repo_dir, "add1").len(),
+        1,
+        "a begin copy stops every time"
+    );
+    assert!(
+        run("git add clean.md untracked.md new.md", &repo_dir, "add3").is_empty(),
+        "as in HEAD, untracked or missing"
+    );
+    assert!(
+        run("git add -A . sub", &repo_dir, "add3").is_empty(),
+        "options, folders and globs are left out"
+    );
+    assert!(
+        run("git commit -m 'git add sub/dirty.md'", &repo_dir, "add3").is_empty(),
+        "words inside quotes"
+    );
+    // The folder: a cd before the part, or git -C in it.
+    let elsewhere = tempfile::tempdir().unwrap();
+    let elsewhere = elsewhere.path().to_string_lossy().replace('\\', "/");
+    assert_eq!(
+        run(
+            &format!("cd {repo_dir} && git add sub/dirty.md"),
+            &elsewhere,
+            "add4"
+        )
+        .len(),
+        1,
+        "after cd"
+    );
+    assert_eq!(
+        run(
+            &format!("git -C {repo_dir}/sub add dirty.md"),
+            &elsewhere,
+            "add5"
+        )
+        .len(),
+        1,
+        "with git -C"
+    );
+    assert!(
+        run("git add sub/dirty.md", &elsewhere, "add6").is_empty(),
+        "the path from another folder names no file"
+    );
+}

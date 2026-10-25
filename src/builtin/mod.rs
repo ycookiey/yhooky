@@ -9,6 +9,7 @@ use crate::output::Finding;
 
 pub mod askuser;
 pub mod backslash;
+pub mod git_add_own;
 pub mod head_trunc;
 pub mod heredoc_size;
 pub mod label;
@@ -27,12 +28,13 @@ pub mod wago;
 type Check = fn(&Input) -> Vec<Finding>;
 
 /// Every built-in check, by the name a rule file uses.
-pub const ALL: [(&str, Check); 15] = [
+pub const ALL: [(&str, Check); 16] = [
     ("backslash-shrink-guard", backslash::run),
     ("rm-junction-guard", rm_junction::run),
     ("askuser-label-guard", askuser::run),
     ("sendfile-to-ysidepaney", sendfile::run),
     ("stage-own-edit-reminder", stage_own_edit::run),
+    ("git-add-own-check", git_add_own::run),
     ("push-check-reminder", push_check::run),
     ("post-push-reminder", post_push::run),
     ("head-truncation-reminder", head_trunc::run),

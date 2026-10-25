@@ -34,7 +34,7 @@ use crate::text::windows_path;
 const ID: &str = "stage-own-edit-reminder";
 
 /// What `git -C <dir> <args>` printed, trimmed, when it succeeded.
-fn git(dir: &Path, args: &[&str]) -> Option<String> {
+pub(crate) fn git(dir: &Path, args: &[&str]) -> Option<String> {
     let out = Command::new("git")
         .arg("-C")
         .arg(dir)
@@ -46,6 +46,55 @@ fn git(dir: &Path, args: &[&str]) -> Option<String> {
     out.status
         .success()
         .then(|| String::from_utf8_lossy(&out.stdout).trim().to_string())
+}
+
+/// The key a file is kept under, here and by git-stage-own-edit: the sha1
+/// of its path from the repository's top.
+pub(crate) fn path_hash(rel: &str) -> String {
+    sha1_smol::Sha1::from(rel.as_bytes()).digest().to_string()
+}
+
+/// The session's id, or "none" when the hook was not given one.
+pub(crate) fn session(input: &Input) -> String {
+    match input.text("session_id") {
+        s if s.is_empty() => "none".to_string(),
+        s => s,
+    }
+}
+
+/// Where this check notes that the session's changes to a file are its
+/// own. git-add-own-check reads the same mark.
+pub(crate) fn own_mark(input: &Input, hash: &str) -> PathBuf {
+    std::env::temp_dir()
+        .join("claude-stage-own-edit-reminder")
+        .join(session(input))
+        .join(hash)
+}
+
+/// Whether `rel` in the repository at `top` is as in HEAD.
+pub(crate) fn unchanged(top: &Path, rel: &str) -> bool {
+    Command::new("git")
+        .arg("-C")
+        .arg(top)
+        .args(["diff", "--quiet", "HEAD", "--", rel])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok_and(|s| s.success())
+}
+
+/// Where `git stage-own-edit begin` keeps its copy of the file `hash`
+/// names, in the repository at `top`.
+pub(crate) fn begin_copy(top: &Path, hash: &str) -> Option<PathBuf> {
+    let store = git(top, &["rev-parse", "--git-path", "stage-own-edit"])?;
+    let store = PathBuf::from(windows_path(&store));
+    let store = if store.is_absolute() {
+        store
+    } else {
+        top.join(store)
+    };
+    Some(store.join(hash))
 }
 
 pub fn run(input: &Input) -> Vec<Finding> {
@@ -76,15 +125,8 @@ pub fn run(input: &Input) -> Vec<Finding> {
         _ => return Vec::new(),
     };
     let top = PathBuf::from(&top);
-    let hash = sha1_smol::Sha1::from(rel.as_bytes()).digest().to_string();
-    let session = match input.text("session_id") {
-        s if s.is_empty() => "none".to_string(),
-        s => s,
-    };
-    let mark = std::env::temp_dir()
-        .join("claude-stage-own-edit-reminder")
-        .join(session)
-        .join(&hash);
+    let hash = path_hash(&rel);
+    let mark = own_mark(input, &hash);
     let remember = || {
         mark.parent()
             .is_some_and(|parent| fs::create_dir_all(parent).is_ok())
@@ -93,30 +135,14 @@ pub fn run(input: &Input) -> Vec<Finding> {
     if mark.exists() {
         return Vec::new();
     }
-    let unchanged = Command::new("git")
-        .arg("-C")
-        .arg(&top)
-        .args(["diff", "--quiet", "HEAD", "--", &rel])
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .is_ok_and(|s| s.success());
-    if unchanged {
+    if unchanged(&top, &rel) {
         // This session's edit is the first change: later ones are its own.
         let _ = remember();
         return Vec::new();
     }
-    let Some(store) = git(&top, &["rev-parse", "--git-path", "stage-own-edit"]) else {
+    let Some(copy) = begin_copy(&top, &hash) else {
         return Vec::new();
     };
-    let store = PathBuf::from(windows_path(&store));
-    let store = if store.is_absolute() {
-        store
-    } else {
-        top.join(store)
-    };
-    let copy = store.join(&hash);
     let kept = fs::read(&copy).ok();
     if kept.is_some() && kept == fs::read(&path).ok() {
         // Kept by `begin` just now: the edits from here on are this one's.

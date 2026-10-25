@@ -5,6 +5,7 @@ builtins = [
   "askuser-label-guard",
   "sendfile-to-ysidepaney",
   "stage-own-edit-reminder",
+  "git-add-own-check",
   "push-check-reminder",
   "post-push-reminder",
   "head-truncation-reminder",

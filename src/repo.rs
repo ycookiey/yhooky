@@ -111,6 +111,36 @@ pub fn work_dir(command: &str, cwd: &str, is_target: impl Fn(&str) -> bool) -> S
     dir
 }
 
+/// Every part of `command` as `(folder, part)`: the folder follows the
+/// `cd`s before the part from `cwd` as in `work_dir`, then a `git -C <dir>`
+/// in the part itself. The parts are split as in `work_dir`, so text in
+/// quotes or heredoc bodies is not taken for a part.
+pub fn parts_with_dirs(command: &str, cwd: &str) -> Vec<(String, String)> {
+    let (command, _) = crate::builtin::backslash::split_heredocs(command);
+    let mut dir = cwd.to_string();
+    let mut parts = Vec::new();
+    for head in crate::builtin::turn_state::all_heads(&command) {
+        if let Some(c) = CD_HEAD.captures(head)
+            && let Some(to) = c.get(1)
+            && to.as_str() != "-"
+        {
+            dir = change_dir(&dir, to.as_str());
+            continue;
+        }
+        let here = match GIT_C_ARG.captures(head) {
+            Some(c) => change_dir(&dir, &c[1]),
+            None => dir.clone(),
+        };
+        parts.push((here, head.to_string()));
+    }
+    parts
+}
+
+/// `path` as seen from the folder `dir` (see `change_dir`).
+pub fn resolve(dir: &str, path: &str) -> String {
+    change_dir(dir, path)
+}
+
 /// The URL of `dir`'s `origin`, or "" when there is none.
 pub fn origin(dir: &str) -> String {
     Command::new("git")
