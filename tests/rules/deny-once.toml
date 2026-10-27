@@ -1,4 +1,4 @@
-# A sample rule for the deny-once action (cases in tests/deny-once.toml).
+# A sample rule for the deny-once action (cases in tests/rules/tests/deny-once.toml).
 [[rule]]
 id = "sample-deny-once"
 event = "PreToolUse"

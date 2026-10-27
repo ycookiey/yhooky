@@ -1,0 +1,9 @@
+# A sample rule for the context-once action (cases in tests/rules/tests/context-once.toml).
+[[rule]]
+id = "sample-context-once"
+event = "PreToolUse"
+tools = '^(Edit|Write)$'
+fields = ["tool_input.file_path"]
+all = ['CHANGELOG\.md$']
+action = "context-once"
+message = '''見本の規則に当たった。'''

@@ -57,8 +57,7 @@ pub struct RuleDef {
     pub repo_dir_in_env: Option<String>,
     /// A pattern the `origin` URL of that folder must match.
     pub repo_remote: Option<String>,
-    /// context, deny, deny-once (deny the first time per session and text,
-    /// a note after) or block.
+    /// context, context-once, deny, deny-once or block.
     pub action: String,
     /// The text. `{repo_dir}` is the folder; `{repo_name}` the last part of
     /// its `origin` URL, without `.git`.
@@ -181,7 +180,8 @@ fn check(rule: &RuleDef) -> Result<(), String> {
 
 fn kind(action: &str) -> Option<Kind> {
     match action {
-        "context" => Some(Kind::Context),
+        // context-once adds the note only the first time (see `evaluate`).
+        "context" | "context-once" => Some(Kind::Context),
         // Deny the first time, a note after (see `evaluate`).
         "deny" | "deny-once" => Some(Kind::Deny),
         "block" => Some(Kind::Block),
@@ -189,10 +189,8 @@ fn kind(action: &str) -> Option<Kind> {
     }
 }
 
-/// For `deny-once`: whether this session meets this rule with this text for
-/// the first time. A note reaches Claude only with the tool's result, so a
-/// rule about something that cannot be taken back (a message sent) stops
-/// the first call instead, and lets the same call through when sent again.
+/// For `deny-once` and `context-once`: whether this session meets this rule
+/// with this text for the first time.
 fn first_meeting(rule: &RuleDef, input: &Input, text: &str) -> bool {
     let dir = once::state_dir("RULE_ONCE_STATE_DIR", "claude-rule-once");
     let session = input.text("session_id");
@@ -270,6 +268,16 @@ fn evaluate(rule: &RuleDef, input: &Input, repo: &Repo) -> Option<Finding> {
         message = message.replace("{repo_dir}", repo.dir(input));
     }
     message = message.replace("{repo_name}", &repo_name);
+    if rule.action == "context-once" {
+        // A reminder repeated on every matching call takes room in Claude's
+        // context window each time; reading it once per session and text is
+        // enough.
+        return first_meeting(rule, input, &text)
+            .then(|| Finding::new(&rule.id, Kind::Context, message));
+    }
+    // A note reaches Claude only with the tool's result, so a rule about
+    // something that cannot be taken back (a message sent) stops the first
+    // call instead, and lets the same call through when sent again.
     if rule.action == "deny-once" {
         return Some(if first_meeting(rule, input, &text) {
             Finding::new(

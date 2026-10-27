@@ -1,0 +1,34 @@
+# context-once adds the note the first time per session and text, and nothing after.
+[setup]
+env = { RULE_ONCE_STATE_DIR = "{root}/rule-once" }
+
+[[case]]
+name = "first"
+rule = "sample-context-once"
+expect = "context"
+contains = "見本の規則に当たった"
+input = { tool_name = "Edit", session_id = "s1", tool_input = { file_path = "a/CHANGELOG.md" } }
+
+[[case]]
+name = "again"
+rule = "sample-context-once"
+expect = "quiet"
+input = { tool_name = "Edit", session_id = "s1", tool_input = { file_path = "a/CHANGELOG.md" } }
+
+[[case]]
+name = "other-file"
+rule = "sample-context-once"
+expect = "context"
+input = { tool_name = "Write", session_id = "s1", tool_input = { file_path = "b/CHANGELOG.md" } }
+
+[[case]]
+name = "other-session"
+rule = "sample-context-once"
+expect = "context"
+input = { tool_name = "Edit", session_id = "s2", tool_input = { file_path = "a/CHANGELOG.md" } }
+
+[[case]]
+name = "no-match"
+rule = "sample-context-once"
+expect = "quiet"
+input = { tool_name = "Edit", session_id = "s1", tool_input = { file_path = "a/README.md" } }

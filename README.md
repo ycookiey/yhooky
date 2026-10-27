@@ -79,7 +79,7 @@ tools = '^Bash$'                     # regular expression the tool name must mat
 fields = ["tool_input.command"]      # fields to read (dot-separated); the first that is not empty
 all = ['(^|\s)git\s+push(\s|$)']     # each must match some line
 none = ['--dry-run']                 # none may match any line
-action = "context"                   # context (add a note), deny (stop), deny-once (stop once per session and matched text; sent again, it only adds the note), block (stop at Stop)
+action = "context"                   # context (add a note), context-once (add the note once per session and value read from fields; sent again, it adds nothing), deny (stop), deny-once (stop once per session and value read from fields; sent again, it only adds the note), block (stop at Stop)
 message = '''Did you run the same checks as CI before pushing?'''
 ```
 
