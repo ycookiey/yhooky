@@ -59,6 +59,10 @@ pub struct RuleDef {
     pub repo_remote: Option<String>,
     /// context, context-once, deny, deny-once or block.
     pub action: String,
+    /// For context-once and deny-once, what counts as meeting the rule
+    /// again: `value` (the default), the same session and text read from
+    /// `fields`; `session`, the same session whatever the text.
+    pub once_per: Option<String>,
     /// The text. `{repo_dir}` is the folder; `{repo_name}` the last part of
     /// its `origin` URL, without `.git`.
     pub message: String,
@@ -175,6 +179,14 @@ fn check(rule: &RuleDef) -> Result<(), String> {
     if rule.fields.is_empty() {
         return Err("no fields".into());
     }
+    if let Some(per) = &rule.once_per {
+        if per != "value" && per != "session" {
+            return Err(format!("unknown once_per {per}"));
+        }
+        if !rule.action.ends_with("-once") {
+            return Err(format!("once_per with action {}", rule.action));
+        }
+    }
     Ok(())
 }
 
@@ -190,11 +202,17 @@ fn kind(action: &str) -> Option<Kind> {
 }
 
 /// For `deny-once` and `context-once`: whether this session meets this rule
-/// with this text for the first time.
+/// for the first time, with this text unless `once_per` is `session`.
 fn first_meeting(rule: &RuleDef, input: &Input, text: &str) -> bool {
     let dir = once::state_dir("RULE_ONCE_STATE_DIR", "claude-rule-once");
     let session = input.text("session_id");
-    once::first_time(&dir, &format!("{session}\n{}\n{text}", rule.id))
+    let key = if rule.once_per.as_deref() == Some("session") {
+        // No line for the text, so no text can give the same key.
+        format!("{session}\n{}", rule.id)
+    } else {
+        format!("{session}\n{}\n{text}", rule.id)
+    };
+    once::first_time(&dir, &key)
 }
 
 /// The folder and remote, found once and only when a rule needs them.
@@ -270,8 +288,8 @@ fn evaluate(rule: &RuleDef, input: &Input, repo: &Repo) -> Option<Finding> {
     message = message.replace("{repo_name}", &repo_name);
     if rule.action == "context-once" {
         // A reminder repeated on every matching call takes room in Claude's
-        // context window each time; reading it once per session and text is
-        // enough.
+        // context window each time; reading it once per session and text (or
+        // once per session, see `once_per`) is enough.
         return first_meeting(rule, input, &text)
             .then(|| Finding::new(&rule.id, Kind::Context, message));
     }
@@ -300,4 +318,38 @@ fn squeeze_slashes(text: &str) -> String {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn rule(action: &str, once_per: Option<&str>) -> RuleDef {
+        RuleDef {
+            id: "r".into(),
+            event: "PreToolUse".into(),
+            tools: None,
+            fields: vec!["tool_input.text".into()],
+            transform: vec![],
+            all: vec![],
+            none: vec![],
+            equals: BTreeMap::new(),
+            repo_dir_in: vec![],
+            repo_dir_in_env: None,
+            repo_remote: None,
+            action: action.into(),
+            once_per: once_per.map(String::from),
+            message: "m".into(),
+            group: None,
+        }
+    }
+
+    #[test]
+    fn once_per_is_checked() {
+        assert!(check(&rule("context-once", None)).is_ok());
+        assert!(check(&rule("context-once", Some("value"))).is_ok());
+        assert!(check(&rule("deny-once", Some("session"))).is_ok());
+        assert!(check(&rule("deny-once", Some("turn"))).is_err());
+        assert!(check(&rule("context", Some("session"))).is_err());
+    }
 }

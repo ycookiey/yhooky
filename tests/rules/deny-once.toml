@@ -7,3 +7,14 @@ fields = ["tool_input.text"]
 all = ['送る']
 action = "deny-once"
 message = '''見本の規則に当たった。'''
+
+# The same with once_per = "session" (cases in tests/rules/tests/deny-once-session.toml).
+[[rule]]
+id = "sample-deny-once-session"
+event = "PreToolUse"
+tools = '^mcp__beeper__send_message$'
+fields = ["tool_input.text"]
+all = ['送る']
+action = "deny-once"
+once_per = "session"
+message = '''見本の規則に当たった。'''

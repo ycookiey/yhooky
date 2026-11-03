@@ -93,6 +93,7 @@ Other fields:
 | `repo_dir_in_env` | Environment variable used instead of `repo_dir_in` when set (space-separated) |
 | `repo_remote` | Regular expression the `origin` URL of that folder must match |
 | `group` | Of the rules in one group, only the first that matches counts |
+| `once_per` | For `context-once` and `deny-once`, what counts as the first time: `value` (the default) once per session and value read from `fields`; `session` once per session, whatever the value (for a reminder that applies to every file alike, for example) |
 
 In `message`, `{repo_dir}` is replaced by that folder, and `{repo_name}` by the last part of the `origin` URL (without `.git`).
 
