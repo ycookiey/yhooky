@@ -79,7 +79,7 @@ tools = '^Bash$'                     # regular expression the tool name must mat
 fields = ["tool_input.command"]      # fields to read (dot-separated); the first that is not empty
 all = ['(^|\s)git\s+push(\s|$)']     # each must match some line
 none = ['--dry-run']                 # none may match any line
-action = "context"                   # context (add a note), context-once (add the note once per session and value read from fields; sent again, it adds nothing), deny (stop), deny-once (stop once per session and value read from fields; sent again, it only adds the note), block (stop at Stop)
+action = "context"                   # context (add a note), context-once (add the note once per session and value read from fields; sent again, it adds nothing; see `once_per`), deny (stop), deny-once (stop once per session and value read from fields; sent again, it only adds the note; see `once_per`), block (stop at Stop)
 message = '''Did you run the same checks as CI before pushing?'''
 ```
 
@@ -93,7 +93,7 @@ Other fields:
 | `repo_dir_in_env` | Environment variable used instead of `repo_dir_in` when set (space-separated) |
 | `repo_remote` | Regular expression the `origin` URL of that folder must match |
 | `group` | Of the rules in one group, only the first that matches counts |
-| `once_per` | For `context-once` and `deny-once`, what counts as the first time: `value` (the default) once per session and value read from `fields`; `session` once per session, whatever the value (for a reminder that applies to every file alike, for example) |
+| `once_per` | For `context-once` and `deny-once`, what counts as the first time. `value` (default): once per session and value read from `fields`. `session`: once per session, whatever the value; for a note that does not depend on which file or command matched. With `deny-once`, `session` stops only the first matching call of the session; later calls, whatever their value, get the note only |
 
 In `message`, `{repo_dir}` is replaced by that folder, and `{repo_name}` by the last part of the `origin` URL (without `.git`).
 

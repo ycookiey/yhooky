@@ -184,7 +184,10 @@ fn check(rule: &RuleDef) -> Result<(), String> {
             return Err(format!("unknown once_per {per}"));
         }
         if !rule.action.ends_with("-once") {
-            return Err(format!("once_per with action {}", rule.action));
+            return Err(format!(
+                "once_per needs action context-once or deny-once (got {})",
+                rule.action
+            ));
         }
     }
     Ok(())
