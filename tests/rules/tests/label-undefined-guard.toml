@@ -1,0 +1,69 @@
+[[case]]
+name = "bare-ids"
+rule = "label-undefined-guard"
+expect = "block"
+contains = "DH1, CW2"
+input = { hook_event_name = "Stop", last_assistant_message = "推奨は DH1。CW2 は影響が大きい。" }
+
+[[case]]
+name = "between-japanese"
+rule = "label-undefined-guard"
+expect = "block"
+contains = "DH1"
+input = { hook_event_name = "Stop", last_assistant_message = "案はDH1で進める。" }
+
+[[case]]
+name = "defined-in-list"
+rule = "label-undefined-guard"
+expect = "quiet"
+input = { hook_event_name = "Stop", last_assistant_message = "- A1: 並列化\n- A2: 先行起動\n\n推奨は A1。" }
+
+[[case]]
+name = "defined-in-parentheses"
+rule = "label-undefined-guard"
+expect = "quiet"
+input = { hook_event_name = "Stop", last_assistant_message = "推奨は A1(並列化で速い)。" }
+
+[[case]]
+name = "defined-in-table"
+rule = "label-undefined-guard"
+expect = "quiet"
+input = { hook_event_name = "Stop", last_assistant_message = "| | 案 | 利点 |\n|---|---|---|\n| **U1** | 読んで取り込む | 広く効く |\n| U2 | 自分で書く | 軽い |\n\nU1 で進める。" }
+
+[[case]]
+name = "defined-by-explanation"
+rule = "label-undefined-guard"
+expect = "quiet"
+input = { hook_event_name = "Stop", last_assistant_message = "推奨は A1 で、全部の処理を並列にして待ち時間を減らす。" }
+
+[[case]]
+name = "only-one-defined"
+rule = "label-undefined-guard"
+expect = "block"
+contains = "A2"
+excludes = "A1,"
+input = { hook_event_name = "Stop", last_assistant_message = "- A1: 並列化\n\nA1 と A2 のどちらか。" }
+
+[[case]]
+name = "in-code-and-quotes"
+rule = "label-undefined-guard"
+expect = "quiet"
+input = { hook_event_name = "Stop", last_assistant_message = "```\nA1 で進める\n```\n`B2` は識別子。\n> C3 で進めて\nhttps://example.com/D4 を見る。" }
+
+[[case]]
+name = "not-ids"
+rule = "label-undefined-guard"
+expect = "quiet"
+input = { hook_event_name = "Stop", last_assistant_message = "UTF8 と MP3、H264、P2P、A4 用紙、v1、0.15.0、978906f を使う。" }
+
+[[case]]
+name = "rewrite"
+rule = "label-undefined-guard"
+expect = "quiet"
+input = { hook_event_name = "Stop", stop_hook_active = true, last_assistant_message = "推奨は DH1。" }
+
+[[case]]
+name = "not-stop"
+rule = "label-undefined-guard"
+expect = "quiet"
+input = { hook_event_name = "PreToolUse", last_assistant_message = "推奨は DH1。" }

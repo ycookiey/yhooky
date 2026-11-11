@@ -13,6 +13,7 @@ pub mod git_add_own;
 pub mod head_trunc;
 pub mod heredoc_size;
 pub mod label;
+pub mod label_undefined;
 pub mod language;
 pub mod phrases;
 pub mod post_push;
@@ -28,7 +29,7 @@ pub mod wago;
 type Check = fn(&Input) -> Vec<Finding>;
 
 /// Every built-in check, by the name a rule file uses.
-pub const ALL: [(&str, Check); 16] = [
+pub const ALL: [(&str, Check); 17] = [
     ("backslash-shrink-guard", backslash::run),
     ("rm-junction-guard", rm_junction::run),
     ("askuser-label-guard", askuser::run),
@@ -39,6 +40,7 @@ pub const ALL: [(&str, Check); 16] = [
     ("post-push-reminder", post_push::run),
     ("head-truncation-reminder", head_trunc::run),
     ("label-guard", label::run),
+    ("label-undefined-guard", label_undefined::run),
     ("language-guard", language::run),
     ("turn-state", turn_state::run),
     ("wago-verb-reminder", wago::run),
