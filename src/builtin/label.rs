@@ -25,14 +25,17 @@ static GREEK: LazyLock<Regex> = LazyLock::new(|| {
 static ROMAN: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^[[:space:]]*[-*+]?[[:space:]]*(i{1,3}|iv|v|vi{1,3})[.)]").unwrap()
 });
+static FENCE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[[:space:]]*```").unwrap());
 static QUOTE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[[:space:]]*>").unwrap());
 static INLINE_CODE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"`[^`]*`").unwrap());
 
-fn prose(text: &str) -> Vec<String> {
+/// The lines of `text` outside code blocks and quoted lines, with inline
+/// code left out. A fence may be indented, as in a list item.
+pub(super) fn prose(text: &str) -> Vec<String> {
     let mut kept = Vec::new();
     let mut in_fence = false;
     for line in lines(text) {
-        if line.starts_with("```") {
+        if FENCE.is_match(line) {
             in_fence = !in_fence;
             continue;
         }

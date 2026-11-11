@@ -31,6 +31,12 @@ expect = "quiet"
 input = { hook_event_name = "Stop", last_assistant_message = "```\n- α: x\n```\n`β)` は引用。\n> i. quoted" }
 
 [[case]]
+name = "in-indented-code"
+rule = "label-guard"
+expect = "quiet"
+input = { hook_event_name = "Stop", last_assistant_message = "1. 手順\n   ```\n   - α: x\n   ```" }
+
+[[case]]
 name = "abc-labels"
 rule = "label-guard"
 expect = "quiet"
