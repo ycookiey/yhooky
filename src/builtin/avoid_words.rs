@@ -1,7 +1,7 @@
 //! avoid-words-reminder (PreToolUse).
 //!
 //! In text written for other people, notes the words a table says not to
-//! use, with what to say instead. It looks at the same calls and the same
+//! use, with what to say instead and the table's note. It looks at the same calls and the same
 //! parts of them as wago-verb-reminder: text typed into a page or sent as a
 //! message, a README or an HTML file of a public repository written with
 //! Write or Edit, and the title and body of a PR or a release that gh
@@ -17,11 +17,13 @@
 //! line is, separated by tabs:
 //!
 //! ```text
-//! word<TAB>what to say instead<TAB>where it was decided<TAB>exceptions
+//! word<TAB>what to say instead<TAB>note<TAB>exceptions
 //! ```
 //!
-//! Only the first column is required. Exceptions are words, separated by
-//! `|`, that hold the word and may stay: 時間帯 for 帯. A word of ASCII
+//! Only the first column is required. The note is free text, shown in
+//! parentheses after the word (a reason or a source, say). Exceptions are
+//! words, separated by `|`, that hold the word and may stay: 時間帯 (time
+//! slot), which holds 帯 (band). A word of ASCII
 //! letters and digits matches ignoring ASCII case, and not inside a longer
 //! ASCII word.
 
@@ -42,7 +44,8 @@ const LIMIT: usize = 10;
 pub struct Entry {
     pub word: String,
     pub instead: String,
-    pub decided: String,
+    /// Free text shown after the word.
+    pub note: String,
     pub exceptions: Vec<String>,
 }
 
@@ -62,7 +65,7 @@ pub fn parse(text: &str) -> Vec<Entry> {
             continue;
         }
         let instead = cols.next().unwrap_or("").to_string();
-        let decided = cols.next().unwrap_or("").to_string();
+        let note = cols.next().unwrap_or("").to_string();
         let exceptions = cols
             .next()
             .unwrap_or("")
@@ -74,7 +77,7 @@ pub fn parse(text: &str) -> Vec<Entry> {
         entries.push(Entry {
             word: word.to_string(),
             instead,
-            decided,
+            note,
             exceptions,
         });
     }
@@ -155,8 +158,8 @@ fn load(path: &Path) -> Vec<Entry> {
     }
 }
 
-/// The note for the entries found.
-fn note(found: &[&Entry], table: &Path) -> String {
+/// The message for the entries found.
+fn message(found: &[&Entry], table: &Path) -> String {
     let lines: String = found
         .iter()
         .take(LIMIT)
@@ -166,12 +169,12 @@ fn note(found: &[&Entry], table: &Path) -> String {
             } else {
                 format!(" → {}", e.instead)
             };
-            let decided = if e.decided.is_empty() {
+            let note = if e.note.is_empty() {
                 String::new()
             } else {
-                format!("(決めた所: {})", e.decided)
+                format!("({})", e.note)
             };
-            format!("\n- {}{instead}{decided}", e.word)
+            format!("\n- {}{instead}{note}", e.word)
         })
         .collect();
     let more = found.len().saturating_sub(LIMIT);
@@ -203,7 +206,7 @@ fn check(input: &Input, table: &Path) -> Vec<Finding> {
     if found.is_empty() {
         return Vec::new();
     }
-    let note = note(&found, table);
+    let note = message(&found, table);
     let dir = crate::once::state_dir("AVOID_WORDS_STATE_DIR", "claude-avoid-words");
     let key = format!("{}\n{text}", input.text("session_id"));
     if sends && crate::once::first_time(&dir, &key) {
@@ -229,7 +232,7 @@ pub fn run(input: &Input) -> Vec<Finding> {
 mod tests {
     use super::*;
 
-    const TABLE_TEXT: &str = "\u{feff}# 使わない語\r\n# 列: 語<TAB>代わり<TAB>決めた所<TAB>除外\r\n帯\t画面の表記を使う\t指摘\t時間帯|携帯\r\n\r\n  # 字下げしたコメント\t\t\t\nPR\tプルリクエスト\n\t空の語\n断片\n";
+    const TABLE_TEXT: &str = "\u{feff}# 使わない語\r\n# 列: 語<TAB>代わり<TAB>注記<TAB>除外\r\n帯\t画面の表記を使う\t指摘\t時間帯|携帯\r\n\r\n  # 字下げしたコメント\t\t\t\nPR\tプルリクエスト\n\t空の語\n断片\n";
 
     fn entries() -> Vec<Entry> {
         parse(TABLE_TEXT)
@@ -252,7 +255,7 @@ mod tests {
             Entry {
                 word: "帯".into(),
                 instead: "画面の表記を使う".into(),
-                decided: "指摘".into(),
+                note: "指摘".into(),
                 exceptions: vec!["時間帯".into(), "携帯".into()],
             }
         );
@@ -311,7 +314,7 @@ mod tests {
         assert_eq!(typed.len(), 1);
         assert!(!typed[0].0, "typing only notes");
         assert!(
-            typed[0].1.contains("帯 → 画面の表記を使う(決めた所: 指摘)"),
+            typed[0].1.contains("帯 → 画面の表記を使う(指摘)"),
             "{}",
             typed[0].1
         );

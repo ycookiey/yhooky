@@ -69,8 +69,9 @@ static SHAPE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[A-Z]{1,3}[0-9]{1
 static SKIP_NUMBERED: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^(DAY|VOL|FIG|SEC|LV|EP|NO)[0-9]+$").unwrap());
 /// A paper size when a word about paper follows: right after it (A4判,
-/// A4 用紙) or a page count soon after (A4 で 2 ページ). A1 and B1 are left
-/// as IDs, being the commonest.
+/// A4 用紙) or a page count soon after (A4 で 2 ページ). Only the sizes
+/// common for paper (A3 to A5, B4, B5) are taken as paper; the others, such
+/// as A1 and A2, stay IDs, as option IDs use them most.
 static PAPER: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(A3|A4|A5|B4|B5)$").unwrap());
 static PAPER_WORD: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^(判|[[:space:]]*(用紙|サイズ|の紙|(?i:paper|size))|[^。]{0,12}?[0-9〜~\-]+[[:space:]]*(ページ|枚|(?i:pages?)))").unwrap()

@@ -1,13 +1,14 @@
 # The table of words not to use, in a scratch folder.
 [setup]
 env = { AVOID_WORDS_FILE = "{root}/avoid-words.tsv", AVOID_WORDS_STATE_DIR = "{root_win}/state" }
-files = { "avoid-words.tsv" = "# 使わない語\n# 列: 語<TAB>代わりの言い方<TAB>決めた所<TAB>除外\n帯\t画面の表記を使う\t指摘\t時間帯|携帯\n# 断片\tトークン\n" }
+files = { "avoid-words.tsv" = "# 使わない語\n# 列: 語<TAB>代わりの言い方<TAB>注記<TAB>除外\n帯\t画面の表記を使う\t指摘\t時間帯|携帯\n# 断片\tトークン\n" }
 
 [[case]]
 name = "typed"
 rule = "avoid-words-reminder"
 expect = "context"
-contains = "帯 → 画面の表記を使う(決めた所: 指摘)"
+contains = "帯 → 画面の表記を使う(指摘)"
+excludes = "決めた所"
 input = { tool_name = "mcp__claude-in-chrome__form_input", tool_input = { value = "上の帯に名前を出す。" } }
 
 [[case]]
