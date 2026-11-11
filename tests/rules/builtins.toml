@@ -13,6 +13,7 @@ builtins = [
   "label-undefined-guard",
   "language-guard",
   "wago-verb-reminder",
+  "avoid-words-reminder",
   "private-word-guard",
   "heredoc-size-guard",
 ]

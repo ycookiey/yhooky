@@ -1,0 +1,48 @@
+# The table of words not to use, in a scratch folder.
+[setup]
+env = { AVOID_WORDS_FILE = "{root}/avoid-words.tsv", AVOID_WORDS_STATE_DIR = "{root_win}/state" }
+files = { "avoid-words.tsv" = "# 使わない語\n# 列: 語<TAB>代わりの言い方<TAB>決めた所<TAB>除外\n帯\t画面の表記を使う\t指摘\t時間帯|携帯\n# 断片\tトークン\n" }
+
+[[case]]
+name = "typed"
+rule = "avoid-words-reminder"
+expect = "context"
+contains = "帯 → 画面の表記を使う(決めた所: 指摘)"
+input = { tool_name = "mcp__claude-in-chrome__form_input", tool_input = { value = "上の帯に名前を出す。" } }
+
+[[case]]
+name = "sent"
+rule = "avoid-words-reminder"
+expect = "deny"
+contains = "同じ操作を出し直せば通る"
+input = { tool_name = "mcp__beeper__send_message", session_id = "s", tool_input = { text = "上の帯に名前を出す。" } }
+
+[[case]]
+name = "sent-again"
+rule = "avoid-words-reminder"
+expect = "context"
+input = { tool_name = "mcp__beeper__send_message", session_id = "s", tool_input = { text = "上の帯に名前を出す。" } }
+
+[[case]]
+name = "exception"
+rule = "avoid-words-reminder"
+expect = "quiet"
+input = { tool_name = "mcp__claude-in-chrome__form_input", tool_input = { value = "時間帯と携帯の話。" } }
+
+[[case]]
+name = "comment-line"
+rule = "avoid-words-reminder"
+expect = "quiet"
+input = { tool_name = "mcp__claude-in-chrome__form_input", tool_input = { value = "断片を並べる。" } }
+
+[[case]]
+name = "not-for-people"
+rule = "avoid-words-reminder"
+expect = "quiet"
+input = { tool_name = "mcp__claude-in-chrome__javascript_tool", tool_input = { text = "上の帯" } }
+
+[[case]]
+name = "private-file"
+rule = "avoid-words-reminder"
+expect = "quiet"
+input = { tool_name = "Write", tool_input = { file_path = "{root_win}/notes.md", content = "上の帯に名前を出す。" } }

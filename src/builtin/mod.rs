@@ -8,6 +8,7 @@ use crate::input::Input;
 use crate::output::Finding;
 
 pub mod askuser;
+pub mod avoid_words;
 pub mod backslash;
 pub mod git_add_own;
 pub mod head_trunc;
@@ -29,7 +30,7 @@ pub mod wago;
 type Check = fn(&Input) -> Vec<Finding>;
 
 /// Every built-in check, by the name a rule file uses.
-pub const ALL: [(&str, Check); 17] = [
+pub const ALL: [(&str, Check); 18] = [
     ("backslash-shrink-guard", backslash::run),
     ("rm-junction-guard", rm_junction::run),
     ("askuser-label-guard", askuser::run),
@@ -44,6 +45,7 @@ pub const ALL: [(&str, Check); 17] = [
     ("language-guard", language::run),
     ("turn-state", turn_state::run),
     ("wago-verb-reminder", wago::run),
+    ("avoid-words-reminder", avoid_words::run),
     ("private-word-guard", private_words::run),
     ("heredoc-size-guard", heredoc_size::run),
     ("public-repo-writing-reminder", public_writing::run),

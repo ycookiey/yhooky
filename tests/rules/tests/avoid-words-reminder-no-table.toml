@@ -1,0 +1,9 @@
+# Without the table, nothing is noted.
+[setup]
+env = { AVOID_WORDS_FILE = "{root}/none.tsv", AVOID_WORDS_STATE_DIR = "{root_win}/state" }
+
+[[case]]
+name = "no-table"
+rule = "avoid-words-reminder"
+expect = "quiet"
+input = { tool_name = "mcp__beeper__send_message", session_id = "s", tool_input = { text = "上の帯に名前を出す。" } }

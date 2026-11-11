@@ -223,14 +223,15 @@ fn published_text(command: &str, dir: &Path) -> String {
 }
 
 /// Text this call puts out for other people.
-struct Outgoing {
-    text: String,
+pub(super) struct Outgoing {
+    pub(super) text: String,
     /// Whether the call may send or publish it, past revising.
-    sends: bool,
+    pub(super) sends: bool,
 }
 
 /// The text to look at, if this call writes Japanese for other people.
-fn outgoing_text(input: &Input) -> Option<Outgoing> {
+/// avoid-words-reminder looks at the same text.
+pub(super) fn outgoing_text(input: &Input) -> Option<Outgoing> {
     let tool = input.tool();
     if TYPING_TOOL.is_match(&tool) {
         let fields: Vec<String> = TYPING_FIELDS.iter().map(|f| f.to_string()).collect();
