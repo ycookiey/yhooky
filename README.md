@@ -55,9 +55,9 @@ Set `YHOOKY_DOCS_DIR` to the folder that holds them, and the messages name `<dir
 }
 ```
 
-`avoid-words-reminder` also reads its table, `avoid-words.tsv`, from this folder (`~` is taken as the home folder); `AVOID_WORDS_FILE` names another file instead.
+`avoid-words-reminder` also reads its table, `avoid-words.tsv`, from this folder; `AVOID_WORDS_FILE` names another file instead.
 
-The value is only written into messages, not opened, so `~` can stay as it is.
+For the pointers the value is only written into messages, not opened, so `~` can stay as it is; to open the table, `~` is taken as the home folder.
 
 `stage-own-edit-reminder` and `git-add-own-check` ask to run `git stage-own-edit`, which does not ship with yhooky either: it is a separate script, at <https://github.com/ycookiey/dotfiles/blob/main/bin/git-stage-own-edit>.
 
