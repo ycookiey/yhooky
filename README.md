@@ -68,7 +68,7 @@ Messages from the built-in checks are in Japanese.
 Rules are read from the `*.toml` files in these folders, in this order (files within a folder by name):
 
 1. `~/.claude/hooks/rules/` (`HOME`, else `USERPROFILE`)
-2. `$CLAUDE_PROJECT_DIR/.claude/hooks/rules/` (project rules; skipped when it is the same folder as 1)
+2. `.claude/hooks/rules/` of the project (project rules; skipped when it is the same folder as 1). The project is `$CLAUDE_PROJECT_DIR`, or, when it has no such folder, the nearest folder above it that has one, looking no higher than the top of its git repository. So a session started in a subfolder of a repository gets the repository's rules, and a repository inside another one does not get the outer one's
 
 ```toml
 # Built-in checks to run

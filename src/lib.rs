@@ -2,12 +2,13 @@
 //! every rule for the event in this one process (rules written as data in
 //! TOML files, and built-in checks), and prints one answer.
 //!
-//! The rules come from `~/.claude/hooks/rules` and, in a project,
-//! `$CLAUDE_PROJECT_DIR/.claude/hooks/rules`.
+//! The rules come from `~/.claude/hooks/rules` and, in a project, the
+//! `.claude/hooks/rules` of `$CLAUDE_PROJECT_DIR` or of the nearest folder
+//! above it, within its git repository, that has one.
 
 use std::fs::OpenOptions;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub mod builtin;
@@ -48,18 +49,43 @@ pub fn home() -> Option<PathBuf> {
         .or_else(|| std::env::var_os("USERPROFILE").map(PathBuf::from))
 }
 
+fn rules_in(dir: &Path) -> PathBuf {
+    dir.join(".claude").join("hooks").join("rules")
+}
+
+/// The folder whose `.claude/hooks/rules` holds the project's rules: the
+/// nearest of `start` and the folders above it that has one, looking no
+/// higher than the top of the git repository `start` is in (the folder with
+/// `.git`, a folder or, in a worktree or submodule, a file). A session
+/// started in a subfolder of a repository thus gets the repository's rules,
+/// and a repository inside another one does not get the outer one's.
+pub fn find_project(start: &Path) -> Option<PathBuf> {
+    for dir in start.ancestors() {
+        if rules_in(dir).is_dir() {
+            return Some(dir.to_path_buf());
+        }
+        if dir.join(".git").exists() {
+            return None;
+        }
+    }
+    None
+}
+
+/// The project folder for `$CLAUDE_PROJECT_DIR` (see `find_project`).
+pub fn project_dir() -> Option<PathBuf> {
+    let start = std::env::var("CLAUDE_PROJECT_DIR").ok()?;
+    find_project(&PathBuf::from(text::windows_path(&start)))
+}
+
 /// The folders rules are read from, in order: the user's, then the
-/// project's when it is another folder.
+/// project's (see `find_project`) when it is another folder.
 pub fn rule_dirs() -> Vec<PathBuf> {
     let mut dirs = Vec::new();
     if let Some(home) = home() {
-        dirs.push(home.join(".claude").join("hooks").join("rules"));
+        dirs.push(rules_in(&home));
     }
-    if let Ok(project) = std::env::var("CLAUDE_PROJECT_DIR") {
-        let dir = PathBuf::from(text::windows_path(&project))
-            .join(".claude")
-            .join("hooks")
-            .join("rules");
+    if let Some(project) = project_dir() {
+        let dir = rules_in(&project);
         let same = dirs.first().is_some_and(|d| {
             d.canonicalize()
                 .ok()
@@ -103,4 +129,46 @@ pub fn findings(input: &Input, rules: &Rules) -> Vec<Finding> {
         }
     }
     found
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn finds_the_rules_of_a_folder_above_within_the_repository() {
+        let root = tempfile::tempdir().unwrap();
+        let repo = root.path().join("repo");
+        let sub = repo.join("a").join("b");
+        fs::create_dir_all(rules_in(&repo)).unwrap();
+        fs::create_dir_all(repo.join(".git")).unwrap();
+        fs::create_dir_all(&sub).unwrap();
+        assert_eq!(find_project(&repo), Some(repo.clone()));
+        assert_eq!(find_project(&sub), Some(repo.clone()));
+    }
+
+    #[test]
+    fn prefers_the_nearest_folder_with_rules() {
+        let root = tempfile::tempdir().unwrap();
+        let repo = root.path().join("repo");
+        let sub = repo.join("sub");
+        fs::create_dir_all(rules_in(&repo)).unwrap();
+        fs::create_dir_all(rules_in(&sub)).unwrap();
+        fs::create_dir_all(repo.join(".git")).unwrap();
+        assert_eq!(find_project(&sub.join("x")), Some(sub.clone()));
+    }
+
+    #[test]
+    fn stops_at_the_top_of_an_inner_repository() {
+        let root = tempfile::tempdir().unwrap();
+        let outer = root.path().join("outer");
+        let inner = outer.join("inner");
+        fs::create_dir_all(rules_in(&outer)).unwrap();
+        fs::create_dir_all(outer.join(".git")).unwrap();
+        fs::create_dir_all(inner.join("src")).unwrap();
+        // A worktree or submodule has a `.git` file, not a folder.
+        fs::write(inner.join(".git"), "gitdir: elsewhere").unwrap();
+        assert_eq!(find_project(&inner.join("src")), None);
+    }
 }
