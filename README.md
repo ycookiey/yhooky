@@ -38,7 +38,8 @@ Register yhooky once per event under `hooks` in `settings.json`. With `args`, it
   "hooks": {
     "PreToolUse": [{ "matcher": "*", "hooks": [{ "type": "command", "command": "yhooky", "args": ["hook"], "timeout": 10 }] }],
     "PostToolUse": [{ "matcher": "*", "hooks": [{ "type": "command", "command": "yhooky", "args": ["hook"], "timeout": 10 }] }],
-    "Stop": [{ "hooks": [{ "type": "command", "command": "yhooky", "args": ["hook"], "timeout": 15 }] }]
+    "Stop": [{ "hooks": [{ "type": "command", "command": "yhooky", "args": ["hook"], "timeout": 15 }] }],
+    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "yhooky", "args": ["hook"], "timeout": 10 }] }]
   }
 }
 ```
@@ -68,7 +69,7 @@ Messages from the built-in checks are in Japanese.
 Rules are read from the `*.toml` files in these folders, in this order (files within a folder by name):
 
 1. `~/.claude/hooks/rules/` (`HOME`, else `USERPROFILE`)
-2. `.claude/hooks/rules/` of the project (project rules; skipped when it is the same folder as 1). The project is `$CLAUDE_PROJECT_DIR`, or, when it has no such folder, the nearest folder above it that has one, looking no higher than the top of its git repository. So a session started in a subfolder of a repository gets the repository's rules, and a repository inside another one does not get the outer one's
+2. `.claude/hooks/rules/` of the project (project rules; skipped when it is the same folder as 1). The project is `$CLAUDE_PROJECT_DIR`, or, when it has no such folder, the nearest folder above it that has one, looking no higher than the top of its git repository (outside a repository, up to the root of the drive). So a session started in a subfolder of a repository gets the repository's rules, and a repository nested inside another does not get the outer repository's rules.
 
 ```toml
 # Built-in checks to run
@@ -119,7 +120,7 @@ When several rules match, the call is stopped if any of them stops it, with the 
 | `heredoc-size-guard` | PreToolUse (Bash) | Stops once per session and command when a heredoc body is longer than 100 lines and holds single quotes, since the Bash tool's wrapping of the command can fail with `unexpected EOF` and run nothing. Asks to write the file with the Write tool and run it (sent again, it goes through) |
 | `post-push-reminder` | PostToolUse (Bash) | After a successful push, notes the repository's post-push script |
 | `head-truncation-reminder` | PostToolUse (Bash) | When the output reaches the limit of the last `\| head`, asks to count the results |
-| `pending-marker-reminder` | UserPromptSubmit | Reminds a session, on every prompt, of work it left pending, until a script it ran removes the marker of that work. A marker is a JSON file in `.claude/hooks/pending/` of the project (see "Rules") with `remind` (the note for the session that left it; required), `session_id` (that session, as in `CLAUDE_CODE_SESSION_ID`), `transcript` (that session's transcript file; optional), `orphan` (the note for other sessions; optional) and `stale_hours` (default 3). Other sessions get nothing while that session goes on, as the work is its own. When its transcript (else the marker) has not changed for `stale_hours`, or the marker names no session, each other session gets `orphan` once (kept under `$PENDING_MARKER_STATE_DIR`, else `claude-pending-marker` in the temporary folder) |
+| `pending-marker-reminder` | UserPromptSubmit | On every prompt, reminds a session of work it left pending. yhooky does not write markers: your own script writes one when it leaves work pending and deletes it when the work is done. A marker is a JSON file in `.claude/hooks/pending/`, next to the project's `.claude/hooks/rules/` (found as in "Rules"; the rules folder must exist, even if empty), with `remind` (the note for the session that wrote it; required), `session_id` (that session, as in `CLAUDE_CODE_SESSION_ID`), `transcript` (that session's transcript file, as in the hook input's `transcript_path`; optional), `orphan` (the note for other sessions; optional; without it, other sessions are never told) and `stale_hours` (a non-negative number; default 3). While that session is still active, other sessions are told nothing, since the work belongs to it. When the marker's `transcript` (or, without one, the marker file itself) has not changed for `stale_hours` hours, or the marker has no `session_id`, every other session gets `orphan` once per marker file name (which sessions were told is remembered under `$PENDING_MARKER_STATE_DIR`, else `claude-pending-marker` in the system temporary folder) |
 | `label-guard` | Stop | Stops headings labeled with Greek letters or Roman numerals |
 | `label-undefined-guard` | Stop | Stops once when the last reply uses an option ID (one to three capital letters and one or two digits, such as `A1` or `DH2`) without saying in the same reply what the option is, and asks to explain each ID. An ID counts as explained when it starts a list item, heading or table cell, or an explanation follows it. Code, quotes and links are not read. Words such as `UTF8`, `MP3` and `F5` are skipped; add other names that take this shape (product names, for example) to `LABEL_UNDEFINED_GUARD_SKIP` (separated by commas or spaces) |
 | `language-guard` | Stop | Stops when the last reply is mostly English |
